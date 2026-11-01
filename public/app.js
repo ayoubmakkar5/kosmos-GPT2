@@ -154,10 +154,34 @@ const CHIPS = {
   ]
 };
 
+/* ─────────────────────────────────────────────────────────── safe storage ──
+ * A sandboxed iframe without `allow-same-origin` gives the page an opaque
+ * origin, and then *both* localStorage and sessionStorage throw SecurityError
+ * on access — including a plain read. Reading them unguarded at module scope
+ * killed the script before it booted, which left the app stuck on its
+ * "loading" screen forever inside an embedded preview. Every access goes
+ * through here instead, and an unavailable store degrades to "forget it".
+ */
+function readStore(store, key) {
+  try {
+    const v = window[store]?.getItem(key);
+    return v == null ? null : v;
+  } catch { return null; }
+}
+function writeStore(store, key, value) {
+  try {
+    if (value == null) window[store]?.removeItem(key);
+    else window[store]?.setItem(key, value);
+    return true;
+  } catch { return false; }
+}
+const readLocal = (k) => readStore('localStorage', k);
+const writeLocal = (k, v) => writeStore('localStorage', k, v);
+
 /* ─────────────────────────────────────────────────────────────────────── state */
 const state = {
-  lang: localStorage.getItem('kosmos.lang') || 'ar',
-  theme: localStorage.getItem('kosmos.theme') || 'dark',
+  lang: readLocal('kosmos.lang') || 'ar',
+  theme: readLocal('kosmos.theme') || 'dark',
   mode: 'chat',
   conversations: [],
   projects: [],
@@ -199,11 +223,23 @@ function toast(msg, ms = 2200) {
  * token is simply never set.
  */
 const TOKEN_KEY = 'kosmos.session';
+/*
+ * Three tiers, because each is unavailable in a different environment:
+ *   1. sessionStorage — survives a reload, partitioned per frame origin.
+ *   2. an in-memory copy — the only option in a sandboxed iframe without
+ *      allow-same-origin, where every storage API throws. The session then
+ *      lasts until the page is reloaded, which is still far better than not
+ *      being able to log in at all.
+ *   3. nothing — the cookie does the work.
+ */
+let tokenMemory = null;
 function getToken() {
-  try { return sessionStorage.getItem(TOKEN_KEY) || null; } catch { return null; }
+  const stored = readStore('sessionStorage', TOKEN_KEY);
+  return stored || tokenMemory;
 }
 function setToken(token) {
-  try { token ? sessionStorage.setItem(TOKEN_KEY, token) : sessionStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
+  tokenMemory = token || null;
+  writeStore('sessionStorage', TOKEN_KEY, token);
 }
 function authHeaders() {
   const token = getToken();
@@ -364,7 +400,7 @@ function renderMarkdown(src) {
 /* ─────────────────────────────────────────────────────────────────────── theme */
 function applyTheme() {
   document.documentElement.dataset.theme = state.theme;
-  localStorage.setItem('kosmos.theme', state.theme);
+  writeLocal('kosmos.theme', state.theme);
 }
 
 /* ──────────────────────────────────────────────────────────────────── language */
@@ -372,7 +408,7 @@ function applyLang() {
   t = I18N[state.lang];
   document.documentElement.lang = state.lang;
   document.documentElement.dir = t.dir;
-  localStorage.setItem('kosmos.lang', state.lang);
+  writeLocal('kosmos.lang', state.lang);
 
   $$('[data-i18n]').forEach((el) => {
     const key = el.dataset.i18n;
@@ -1369,7 +1405,7 @@ function wireGlobalEvents() {
   $('#newProjectBtn').addEventListener('click', () => openProjectModal(null));
 
   // theme follows the OS on first visit
-  if (!localStorage.getItem('kosmos.theme')) {
+  if (!readLocal('kosmos.theme')) {
     state.theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
   }
   applyTheme();
@@ -1382,15 +1418,15 @@ function wireGlobalEvents() {
 function logActivity(kind, label) {
   try {
     const key = 'kosmos.activity';
-    const items = JSON.parse(localStorage.getItem(key) || '[]');
+    const items = JSON.parse(readLocal(key) || '[]');
     items.unshift({ kind, label: String(label).slice(0, 120), at: Date.now() });
-    localStorage.setItem(key, JSON.stringify(items.slice(0, 60)));
+    writeLocal(key, JSON.stringify(items.slice(0, 60)));
   } catch { /* storage full or blocked */ }
 }
 
 function readActivity() {
   try {
-    return JSON.parse(localStorage.getItem('kosmos.activity') || '[]');
+    return JSON.parse(readLocal('kosmos.activity') || '[]');
   } catch {
     return [];
   }
@@ -1399,17 +1435,17 @@ function readActivity() {
 function rememberPrompt(text, mode) {
   try {
     const key = 'kosmos.prompts';
-    const items = JSON.parse(localStorage.getItem(key) || '[]');
+    const items = JSON.parse(readLocal(key) || '[]');
     const entry = { text: String(text).slice(0, 300), mode, at: Date.now() };
     const dedup = items.filter((i) => i.text !== entry.text);
     dedup.unshift(entry);
-    localStorage.setItem(key, JSON.stringify(dedup.slice(0, 30)));
+    writeLocal(key, JSON.stringify(dedup.slice(0, 30)));
   } catch { /* ignore */ }
 }
 
 function readPrompts() {
   try {
-    return JSON.parse(localStorage.getItem('kosmos.prompts') || '[]');
+    return JSON.parse(readLocal('kosmos.prompts') || '[]');
   } catch {
     return [];
   }

@@ -760,6 +760,27 @@ async function handler(req, res) {
 
   try {
     if (pathname.startsWith('/api/') || pathname === '/api') {
+      // A sandboxed iframe without allow-same-origin has an opaque origin, so
+      // the page's origin is `null` and every call to its own API counts as
+      // cross-origin — the browser rejected all of them with
+      // MissingAllowOriginHeader and the app could not even load session state.
+      // Reflect the caller's origin but deliberately do NOT allow credentials:
+      // without Access-Control-Allow-Credentials the browser never attaches the
+      // session cookie cross-origin, so a foreign page still cannot act as the
+      // user. Cross-origin callers must present the bearer token, which only
+      // this page holds.
+      const origin = req.headers.origin;
+      if (origin) {
+        res.setHeader('access-control-allow-origin', origin);
+        res.setHeader('vary', 'origin');
+        res.setHeader('access-control-allow-methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+        res.setHeader('access-control-allow-headers', 'content-type, authorization, x-kosmos-session');
+        res.setHeader('access-control-max-age', '600');
+      }
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        return res.end();
+      }
       return await handleApi(req, res, sessionFrom(req));
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') {

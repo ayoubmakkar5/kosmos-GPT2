@@ -137,5 +137,30 @@ const viaCookie = await fetch(`${BASE}/api/me`, { headers: { cookie, ...H } });
 check('/api/me still works by cookie', viaCookie.status === 200);
 check('cookie transport is preferred', (await viaCookie.json()).via === 'cookie');
 
+// 7. REGRESSION: a sandboxed iframe without allow-same-origin gives the page an
+// opaque origin, so its calls to its own API are cross-origin. Without CORS
+// headers the browser refused them all with MissingAllowOriginHeader and the
+// app never left its loading screen. Allow the origin, but never credentials —
+// otherwise any site could ride the user's cookie.
+const preflight = await fetch(`${BASE}/api/me`, { method: 'OPTIONS', headers: { origin: 'null', 'access-control-request-method': 'GET' } });
+check('preflight is answered', preflight.status === 204, `status ${preflight.status}`);
+check('opaque origin is allowed', (preflight.headers.get('access-control-allow-origin') || '') === 'null');
+check('authorization header is allowed', /authorization/i.test(preflight.headers.get('access-control-allow-headers') || ''));
+check('credentials are NOT allowed cross-origin', !preflight.headers.get('access-control-allow-credentials'));
+
+const foreign = await fetch(`${BASE}/api/me`, { headers: { origin: 'https://evil.example', ...H } });
+check('foreign origin without a token gets 401', foreign.status === 401, `status ${foreign.status}`);
+check('responses still never allow credentials', !foreign.headers.get('access-control-allow-credentials'));
+
+// A foreign origin holding a bearer token IS allowed — that is the whole point,
+// and it requires the token, which a foreign page does not have.
+const foreignWithToken = await fetch(`${BASE}/api/login`, {
+  method: 'POST', headers: { 'content-type': 'application/json', origin: 'null', 'x-forwarded-proto': 'https' },
+  body: JSON.stringify({ password: 'Kosmos@2026', framed: true })
+});
+const fw = await foreignWithToken.json();
+const foreignMe = await fetch(`${BASE}/api/me`, { headers: { origin: 'null', authorization: `Bearer ${fw.token}` } });
+check('opaque-origin page can authenticate by token', foreignMe.status === 200, `status ${foreignMe.status}`);
+
 console.log(`\n${pass}/${pass + fail} checks passed`);
 process.exit(fail ? 1 : 0);
