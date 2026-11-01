@@ -3,156 +3,173 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Kosmos Code — مساعد البرمجة بالذكاء الاصطناعي</title>
-<meta name="description" content="Kosmos Code — AI coding assistant powered by a local Qwen3 model running on llama.cpp" />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%A1%3C/text%3E%3C/svg%3E" />
-<link rel="stylesheet" href="/styles.css?v=6" />
+<meta name="color-scheme" content="light dark" />
+<title>Kosmos AI</title>
+<meta name="description" content="Kosmos AI — محادثة ذكية تعمل بنموذج LFM3-1.7B على خادمك." />
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="/styles.css?v=20" />
 </head>
-<body>
+<body data-screen="loading">
 
-<!-- ================= LOGIN GATE ================= -->
-<div id="gate" class="gate">
-  <div class="gate-bg"></div>
+<!-- ───────────────────────────── login ───────────────────────────── -->
+<section id="gate" class="gate" hidden>
   <div class="gate-card">
-    <div class="logo">
-      <span class="logo-mark">⚡</span>
-      <div>
-        <h1>Kosmos <span>Code</span></h1>
-        <p class="tagline" data-i18n="tagline">مساعد البرمجة بالذكاء الاصطناعي · نموذج Qwen3 حقيقي يعمل محلياً</p>
-      </div>
+    <div class="gate-logo" aria-hidden="true">
+      <svg viewBox="0 0 48 48" width="46" height="46"><defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c5cff"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs><circle cx="24" cy="24" r="21" fill="none" stroke="url(#g1)" stroke-width="2.5" stroke-dasharray="3 6"/><circle cx="24" cy="24" r="9" fill="url(#g1)"/><circle cx="38" cy="14" r="2.6" fill="#22d3ee"/></svg>
     </div>
-
-    <form id="login-form" autocomplete="off">
-      <label for="password" data-i18n="passwordLabel">كلمة السر</label>
-      <div class="pw-wrap">
-        <input id="password" name="password" type="password" placeholder="••••••••" required autofocus />
-        <button type="button" id="toggle-pw" class="ghost-icon" aria-label="show password">👁</button>
-      </div>
-      <button type="submit" class="primary" id="login-btn">
+    <h1 class="gate-title">Kosmos AI</h1>
+    <p class="gate-sub" data-i18n="gateSub">مساحة محادثة محمية. أدخل كلمة السر للمتابعة.</p>
+    <form id="loginForm" class="gate-form" autocomplete="off">
+      <label class="field">
+        <span class="field-label" data-i18n="password">كلمة السر</span>
+        <input id="password" name="password" type="password" required minlength="1"
+               autocomplete="current-password" spellcheck="false" dir="ltr" placeholder="••••••••" />
+      </label>
+      <div id="loginError" class="gate-error" role="alert" hidden></div>
+      <button id="loginBtn" class="btn-primary" type="submit">
         <span data-i18n="enter">دخول</span>
       </button>
-      <p id="login-error" class="error" role="alert"></p>
+      <label class="check">
+        <input id="persistent" type="checkbox" checked />
+        <span data-i18n="staySignedIn">ابقني مسجلاً</span>
+      </label>
     </form>
-
     <div class="gate-foot">
-      <span class="pill">🔒 <span data-i18n="protected">محمي بكلمة سر</span></span>
-      <span class="pill">🧠 <span id="gate-model">Qwen3-0.6B · Q4_K_M</span></span>
-      <span class="pill" id="gate-engine">⚙️ llama.cpp</span>
+      <button class="link-btn" type="button" data-lang-toggle>English</button>
+      <span class="dot">·</span>
+      <span class="mono" id="gateModel">LFM3-1.7B</span>
     </div>
   </div>
-</div>
+</section>
 
-<!-- ================= APP ================= -->
-<div id="app" class="app hidden">
-  <aside class="sidebar">
-    <div class="brand">
-      <span class="logo-mark small">⚡</span>
-      <div class="brand-text">
-        <strong>Kosmos <span>Code</span></strong>
-        <small data-i18n="brandSub">بيئة برمجة بالذكاء الاصطناعي</small>
+<!-- ───────────────────────────── app ───────────────────────────── -->
+<div id="app" class="app" hidden>
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-top">
+      <div class="brand">
+        <svg viewBox="0 0 48 48" width="26" height="26" aria-hidden="true"><circle cx="24" cy="24" r="21" fill="none" stroke="url(#g1)" stroke-width="3" stroke-dasharray="3 6"/><circle cx="24" cy="24" r="10" fill="url(#g1)"/></svg>
+        <span>Kosmos</span>
       </div>
+      <button id="closeSidebar" class="icon-btn mobile-only" type="button" aria-label="close">✕</button>
     </div>
 
-    <button id="new-chat" class="new-chat">
-      <span>＋</span> <span data-i18n="newChat">محادثة جديدة</span>
+    <button id="newChat" class="new-chat" type="button">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>
+      <span data-i18n="newChat">محادثة جديدة</span>
     </button>
 
-    <div class="side-section">
-      <h3 data-i18n="history">المحادثات</h3>
-      <ul id="history-list" class="history"></ul>
+    <nav class="sidebar-nav">
+      <button class="nav-item is-active" data-view="chat" type="button">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a8 8 0 0 1-8 8H8l-4 3v-6.5A8 8 0 1 1 21 12Z" stroke-linecap="round"/></svg>
+        <span data-i18n="chats">المحادثات</span>
+      </button>
+      <button class="nav-item" data-view="projects" type="button">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" stroke-linejoin="round"/></svg>
+        <span data-i18n="projects">المشاريع</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-list-wrap">
+      <div id="convList" class="sidebar-list"></div>
+      <div id="projectList" class="sidebar-list" hidden></div>
+      <button id="newProjectBtn" class="btn-ghost new-project" type="button" hidden data-i18n="newProject">مشروع جديد</button>
     </div>
 
-    <div class="side-section model-card">
-      <h3 data-i18n="modelTitle">النموذج</h3>
-      <div class="model-row"><span data-i18n="modelName">الاسم</span><b id="m-name">Qwen3-0.6B</b></div>
-      <div class="model-row"><span data-i18n="modelQuant">التكميم</span><b id="m-quant">Q4_K_M</b></div>
-      <div class="model-row"><span data-i18n="modelEngine">المشغّل</span><b>llama.cpp</b></div>
-      <div class="model-row"><span data-i18n="modelCtx">السياق</span><b id="m-ctx">4096</b></div>
-      <div class="model-status" id="model-status">
-        <span class="dot"></span><span id="model-status-text" data-i18n="loading">جارٍ تحميل النموذج…</span>
+    <div class="sidebar-foot">
+      <div class="model-badge" id="modelBadge" title="">
+        <span class="pulse" id="modelPulse"></span>
+        <div class="model-badge-text">
+          <strong id="modelName">LFM3-1.7B</strong>
+          <small id="modelMeta">Q4_K_M · llama.cpp</small>
+        </div>
       </div>
-    </div>
-
-    <div class="side-foot">
-      <button id="lang-toggle" class="ghost">🌐 <span id="lang-label">English</span></button>
-      <button id="logout" class="ghost">🚪 <span data-i18n="logout">خروج</span></button>
+      <div class="foot-actions">
+        <button class="link-btn" type="button" data-lang-toggle>English</button>
+        <button class="link-btn" type="button" id="logoutBtn" data-i18n="signOut">خروج</button>
+      </div>
     </div>
   </aside>
 
   <main class="main">
     <header class="topbar">
-      <button id="menu-btn" class="ghost-icon only-mobile">☰</button>
+      <button id="openSidebar" class="icon-btn mobile-only" type="button" aria-label="menu">☰</button>
       <div class="topbar-title">
-        <h2 id="chat-title" data-i18n="welcomeTitle">مساحة العمل</h2>
-        <span class="sub" id="topbar-sub" data-i18n="welcomeSub">اكتب طلبك وسيولّد النموذج الكود</span>
+        <h2 id="chatTitle">Kosmos AI</h2>
+        <p id="chatSub" data-i18n="welcomeSub">نموذج LFM3-1.7B محلي — بلا واجهات خارجية</p>
       </div>
       <div class="topbar-actions">
-        <div class="seg" role="group">
-          <button data-mode="code" class="seg-btn active" data-i18n="modeCode">توليد كود</button>
-          <button data-mode="explain" class="seg-btn" data-i18n="modeExplain">شرح</button>
-          <button data-mode="debug" class="seg-btn" data-i18n="modeDebug">تصحيح</button>
+        <div class="mode-switch" role="tablist" aria-label="mode">
+          <button class="mode-btn is-active" data-mode="chat" type="button" data-i18n="modeChat">محادثة</button>
+          <button class="mode-btn" data-mode="code" type="button" data-i18n="modeCode">كود</button>
+          <button class="mode-btn" data-mode="explain" type="button" data-i18n="modeExplain">شرح</button>
+          <button class="mode-btn" data-mode="debug" type="button" data-i18n="modeDebug">تصحيح</button>
         </div>
       </div>
     </header>
 
-    <section id="messages" class="messages">
-      <div class="empty" id="empty-state">
-        <div class="empty-icon">⚡</div>
-        <h2 data-i18n="emptyTitle">ماذا نبرمج اليوم؟</h2>
-        <p data-i18n="emptyText">اطلب كوداً بلغتك المفضلة، أو الصق كوداً ليشرحه أو يصلح أخطاءه النموذج المحلي Qwen3.</p>
-        <div class="suggestions">
-          <button class="chip" data-prompt-key="s1">🐍 دالة بايثون لقراءة CSV وتحليل الأعمدة</button>
-          <button class="chip" data-prompt-key="s2">🌐 صفحة HTML/CSS لبطاقة تسجيل دخول عصرية</button>
-          <button class="chip" data-prompt-key="s3">⚛️ مكوّن React لعدّاد مع تخزين محلي</button>
-          <button class="chip" data-prompt-key="s4">🔎 اشرح لي هذا الكود وابحث عن الأخطاء</button>
+    <section id="chatScroll" class="chat-scroll">
+      <div id="welcome" class="welcome">
+        <div class="welcome-inner">
+          <div class="welcome-mark" aria-hidden="true">
+            <svg viewBox="0 0 48 48" width="58" height="58"><circle cx="24" cy="24" r="21" fill="none" stroke="url(#g1)" stroke-width="2" stroke-dasharray="3 6"/><circle cx="24" cy="24" r="9" fill="url(#g1)"/></svg>
+          </div>
+          <h1 class="welcome-title" data-i18n="welcomeTitle">كيف أساعدك اليوم؟</h1>
+          <p class="welcome-sub" data-i18n="welcomeSubLong">محادثة، شرح، برمجة وتحليل — كل شيء يعمل محلياً بنموذج LFM3-1.7B من Liquid AI.</p>
+          <div class="chips" id="chips"></div>
         </div>
       </div>
+      <div id="messages" class="messages" aria-live="polite"></div>
     </section>
 
-    <footer class="composer">
-      <div class="composer-box">
-        <textarea id="input" rows="1" data-i18n-ph="placeholder" placeholder="اكتب طلبك… مثال: اكتب دالة بايثون لحساب تسلسل فيبوناتشي مع اختبارات"></textarea>
-        <div class="composer-actions">
-          <label class="select-lang">
-            <select id="code-lang" title="language">
-              <option value="auto">🌐 Auto</option>
-              <option value="python">🐍 Python</option>
-              <option value="javascript">🟨 JavaScript</option>
-              <option value="typescript">🟦 TypeScript</option>
-              <option value="html">🌐 HTML/CSS</option>
-              <option value="react">⚛️ React</option>
-              <option value="sql">🗄️ SQL</option>
-              <option value="cpp">🔧 C++</option>
-              <option value="csharp">🎯 C#</option>
-              <option value="php">🐘 PHP</option>
-            </select>
-          </label>
-          <button id="send" class="send" disabled>
-            <span data-i18n="send">إرسال</span> <b>➤</b>
-          </button>
-        </div>
-      </div>
+    <div class="composer-wrap">
+      <div id="attachmentBar" class="attachment-bar" hidden></div>
+      <form id="composer" class="composer">
+        <button id="attachBtn" class="icon-btn" type="button" title="attach" aria-label="attach">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v9m0 0 4-4m-4 4-4-4M5 19h14" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <input id="fileInput" type="file" multiple hidden />
+        <textarea id="input" rows="1" placeholder="اكتب رسالتك…" data-i18n-ph="placeholder" spellcheck="false"></textarea>
+        <button id="sendBtn" class="send" type="submit" aria-label="send" disabled>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h13M12 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </form>
       <div class="composer-foot">
-        <span id="engine-badge">🧠 <b id="engine-badge-model">Qwen3</b> · <span id="engine-badge-state" data-i18n="loadingShort">يحمّل…</span></span>
-        <span id="stats-badge" class="muted"></span>
+        <span id="hint" data-i18n="hint">Enter للإرسال · Shift+Enter لسطر جديد</span>
+        <span class="mono" id="stats"></span>
       </div>
-    </footer>
+    </div>
   </main>
 
-  <div id="mobile-overlay" class="overlay hidden"></div>
+  <!-- artifacts panel -->
+  <aside id="artifact" class="artifact" hidden>
+    <div class="artifact-head">
+      <div class="artifact-tabs" id="artifactTabs"></div>
+      <div class="artifact-tools">
+        <button class="icon-btn" id="artifactCopy" type="button" title="copy">⧉</button>
+        <button class="icon-btn" id="artifactDownload" type="button" title="download">⇩</button>
+        <button class="icon-btn" id="artifactClose" type="button" title="close">✕</button>
+      </div>
+    </div>
+    <div class="artifact-body">
+      <pre id="artifactCode" class="artifact-code"><code></code></pre>
+      <iframe id="artifactPreview" class="artifact-preview" hidden sandbox="allow-scripts" title="preview"></iframe>
+    </div>
+  </aside>
 </div>
 
-<!-- ================= RUN PREVIEW MODAL ================= -->
-<div id="preview-modal" class="modal hidden">
+<!-- projects modal -->
+<div id="projectModal" class="modal" hidden>
   <div class="modal-card">
-    <div class="modal-head">
-      <strong data-i18n="previewTitle">معاينة مباشرة</strong>
-      <button id="close-preview" class="ghost-icon">✕</button>
-    </div>
-    <iframe id="preview-frame" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
+    <header class="modal-head">
+      <h3 data-i18n="projects">المشاريع</h3>
+      <button class="icon-btn" id="closeProjectModal" type="button">✕</button>
+    </header>
+    <div id="projectBody" class="modal-body"></div>
   </div>
 </div>
 
-<script src="/app.js?v=6"></script>
+<div id="toast" class="toast" hidden></div>
+
+<script src="/app.js?v=20" defer></script>
 </body>
 </html>

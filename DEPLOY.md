@@ -1,163 +1,185 @@
-# 🌍 نشر الموقع على الإنترنت
+# Deploying Kosmos AI
 
-التطبيق مبني على **Node.js + llama.cpp + أوزان Qwen3-0.6B (GGUF)**، لذلك يحتاج استضافة
-تدعم Docker أو Node مع ذاكرة **≥ 2 GB من RAM** (المرحلة الأولى من التحميل تحتاج ~1.5 GB).
+The app is one Node process plus one `llama-server` child. There is no database
+and no external API, so any box with a C++ toolchain can host it.
 
-> 🔐 لا تنسَ ضبط متغيّر البيئة `APP_PASSWORD` على الاستضافة، وإلا سيُستخدم الافتراضي
-> `Kosmos@2026`.
+## The one hard requirement
 
+The weights live on Hugging Face. **The host that first runs
+`scripts/download-model.sh` needs access to `huggingface.co`** (or `hf-mirror.com`
+as a fallback). After that first download the app is fully offline.
 
----
-
-## الخيار 0 — openpouch.sh (الأنسب لوكلاء البرمجة، بلا حساب)
-
-openpouch ينشر المجلد كحاوية Node حقيقية ويعطيك رابطاً مباشراً
-`https://<slug>.openpouch.sh` بعد بناء المشروع على خوادمه.
-
-### أ) من GitHub Actions (يعمل حتى لو كانت شبكتك تحجب openpouch.sh)
-
-1. ارفع الفرع إلى `main` (أو شغّل الـ workflow من تبويب **Actions**).
-2. **Actions → Deploy to openpouch → Run workflow** وأدخل كلمة السر.
-3. الرابط يظهر في ملخّص التشغيل وفي `openpouch-deploy` artifact.
-
-### ب) من جهازك مباشرة (أمر واحد)
+If the host is blocked, download on your laptop and copy the file over:
 
 ```bash
-git clone https://github.com/ayoubmakkar5/kosmos-GPT2 && cd kosmos-GPT2
-bash scripts/fetch-engine.sh          # يجلب مصدر llama.cpp إلى ./engine (~55MB)
-npx -y openpouch deploy . \
-  --health-path /api/health \
-  --var APP_PASSWORD='Kosmos@2026' \
-  --json
+# on a machine with access
+hf download LiquidAI/LFM3-1.7B-GGUF LFM3-1.7B-Q4_K_M.gguf --local-dir models/
+# then
+scp models/LFM3-1.7B-Q4_K_M.gguf user@server:/app/models/
 ```
 
-النتيجة: رابط `https://<slug>.openpouch.sh` + رابط claim لضمّ النشر لحسابك.
+## Get a public URL in one step
 
-> ⚠️ الحاوية تحتاج **~2 GB RAM** لتحميل نموذج Qwen3-0.6B. إذا كانت الحصة الافتراضية
-> لـ openpouch أقل، سيبقى الموقع يعمل لكن حالة النموذج ستظهر «تحميل» حتى تتوفر الذاكرة.
-> في هذه الحالة استخدم خطة أعلى أو الخيار 1/2 أدناه.
-
-> ملاحظة: كلمة السر تُحقن كـ **متغير بيئة** (لا تُكتب في الملفات المرفوعة)،
-> ويمكنك تغييرها بإعادة النشر بنفس الأمر مع قيمة جديدة.
-
----
-
-## الخيار 1 — أي استضافة تدعم Docker (الأسهل والأنسب)
-
-الـ `Dockerfile` الموجود في المستودع يبني llama.cpp، ينزّل أوزان Qwen3 الحقيقية،
-ويشغّل الموقع على المنفذ `3000`.
+`docker-compose.yml` and `render.yaml` in the repo root are ready to use.
 
 ```bash
-docker build -t kosmos-code .
-docker run -p 3000:3000 -e APP_PASSWORD='كلمتك-السرية' kosmos-code
+cp .env.example .env      # then edit APP_PASSWORD
+docker compose up -d --build
 ```
 
-على منصّات مثل **Render / Railway / Fly.io / Northflank / Koyeb**:
+That gives you `http://<host>:3000`. Put it behind any TLS proxy (Caddy is the
+shortest route) and you have a real `https://` address:
 
-1. أنشئ خدمة جديدة من مستودع GitHub هذا.
-2. اختر **Docker** (سيُكتشف `Dockerfile` تلقائياً).
-3. أضف متغيّرات البيئة:
-   * `APP_PASSWORD` = كلمة سرك
-   * `SESSION_SECRET` = نص عشوائي طويل (اختياري لكن مستحسن)
-4. الحجم الموصى به: **1 vCPU / 2 GB RAM** على الأقل.
-
-### Render (Blueprint)
-
-يوجد ملف `render.yaml` جاهز. من لوحة Render: **New → Blueprint → اختر هذا المستودع**،
-ثم أدخل قيمة `APP_PASSWORD` عند الطلب.
-
-### Fly.io
-
-```bash
-fly launch --no-deploy            # اختر اسم التطبيق
-fly secrets set APP_PASSWORD='كلمتك-السرية'
-fly deploy
 ```
-
-### Railway
-
-```bash
-railway login
-railway init
-railway variables --set APP_PASSWORD='كلمتك-السرية'
-railway up
-```
-
----
-
-## الخيار 2 — خادم VPS عادي (Ubuntu)
-
-```bash
-# على الخادم
-sudo apt update && sudo apt install -y git cmake build-essential curl nodejs npm nginx
-git clone <رابط-المستودع> kosmos-code && cd kosmos-code
-bash scripts/build-llama.sh
-bash scripts/download-model.sh
-
-# خدمة systemd
-sudo tee /etc/systemd/system/kosmos.service >/dev/null <<'EOF'
-[Unit]
-Description=Kosmos Code
-After=network.target
-
-[Service]
-WorkingDirectory=/root/kosmos-code
-Environment=PORT=3000
-Environment=APP_PASSWORD=كلمتك-السرية
-Environment=SESSION_SECRET=غيّر-هذا-النص
-ExecStart=/usr/bin/node server.js
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl enable --now kosmos
-```
-
-ثم وكيل عكسي عبر Nginx (HTTPS):
-
-```nginx
-server {
-  listen 80;
-  server_name example.com;
-  location / {
-    proxy_pass http://127.0.0.1:3000;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_buffering off;          # مهم لبثّ الردود (SSE)
-    proxy_read_timeout 300s;
-  }
+kosmos.example.com {
+    reverse_proxy 127.0.0.1:3000
 }
 ```
 
-```bash
-sudo certbot --nginx -d example.com
-```
+**Render / Railway / Fly** — all three run the Dockerfile directly:
 
----
+- Render: push to GitHub → New → Blueprint → pick this repo. `render.yaml`
+  already declares the health check, the plan and `APP_PASSWORD` (prompted, never
+  committed). Pick the **2 GB** plan; the weights are 1.1 GB before the KV cache.
+- Fly: `fly launch --no-deploy` then `fly secrets set APP_PASSWORD=...` and
+  `fly deploy`. Give the machine 2 GB: `fly scale memory 2048`.
 
-## ملاحظات الأداء
+The app reads `x-forwarded-proto` to mark the session cookie `Secure` and
+switches to `SameSite=None` when it is framed, so login keeps working behind a
+TLS-terminating proxy and inside an embedded preview. No extra flags needed.
 
-| المعالج | السرعة التقريبية |
-|---|---|
-| 2 vCPU | ~6–12 توكن/ثانية |
-| 4 vCPU | ~15–25 توكن/ثانية |
-
-النموذج `Qwen3-0.6B` يعمل على المعالج بكفاءة، والرد يبدأ عادةً بأقل من ثانية بعد التحميل
-الأول (20–60 ثانية لتحميل الأوزان إلى الذاكرة).
-
----
-
-## نشر المستودع على GitHub
-
-المستودع الحالي: <https://github.com/ayoubmakkar5/kosmos-GPT2>
+## Docker (recommended)
 
 ```bash
-git add -A && git commit -m "Kosmos Code: AI coding site with local Qwen3 model"
-git push origin HEAD
+docker build -t kosmos-ai .
+docker run -d --name kosmos \
+  -p 3000:3000 \
+  -e APP_PASSWORD='Kosmos@2026' \
+  -e CTX_SIZE=8192 \
+  -e ENGINE_THREADS=4 \
+  --restart unless-stopped \
+  kosmos-ai
 ```
 
-> ملف الأوزان `models/*.gguf` مستثنى من Git (462 MB). يُنزَّل تلقائياً بواسطة
-> `scripts/download-model.sh` أو أثناء بناء صورة Docker.
+The image compiles llama.cpp v0.8.0 (LFM3 support) and bakes the Q4_K_M weights
+into their own layer. Expect ~25 min on first build for a 2-core box, and about
+1.4 GB of RAM at runtime (1.1 GB weights + KV cache).
+
+### GPU
+
+Build llama-server with CUDA and pass `ENGINE_GPU_LAYERS=99`:
+
+```bash
+docker build --build-arg LLAMA_VERSION=0.8.0 -t kosmos-cuda .
+docker run --gpus all -p 3000:3000 -e APP_PASSWORD='Kosmos@2026' \
+  -e ENGINE_GPU_LAYERS=99 -e CTX_SIZE=32768 kosmos-cuda
+```
+
+On a GPU, 32K context is comfortable; the native 256K needs ~1.6 GB of KV cache
+on its own, so only raise `CTX_SIZE` if the box has the memory.
+
+## Bare metal
+
+```bash
+sudo apt-get install -y build-essential cmake curl nodejs npm
+git clone <this repo> && cd kosmos-GPT2
+
+bash scripts/build-engine.sh      # ~10 min on 2 cores
+bash scripts/download-model.sh    # ~1.1 GB
+APP_PASSWORD='Kosmos@2026' npm start
+```
+
+## Behind a reverse proxy (nginx / Caddy)
+
+Streaming needs compression and buffering turned off for `/api/chat`:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_buffering off;          # keeps SSE streaming smooth
+    proxy_read_timeout 600s;
+}
+```
+
+Caddy needs no extra configuration for streaming.
+
+**Serve it over HTTPS.** The session cookie is `HttpOnly` + `SameSite=Lax`; over
+plain HTTP it still works, but the password would travel in clear text.
+
+## Sizing
+
+| Model | Weights (MXFP4/Q4) | Minimum RAM | Notes |
+|---|---|---|---|
+| Qwen3-0.6B | 0.46 GB | 2 GB | the shipped default |
+| LFM3-1.7B | 1.1 GB | 3 GB | the originally intended model |
+| gpt-oss-20b | ~12.8 GB | 16 GB | MoE, 3.6B active |
+| gpt-oss-120b | ~63 GB | 80 GB, or a GPU | MoE, 5.1B active |
+
+| Box | Context | Throughput |
+|---|---|---|
+| 2 vCPU / 4 GB | 8K | ~6–9 tok/s |
+| 4 vCPU / 8 GB | 16–32K | ~15–20 tok/s |
+| 1 GPU (8 GB+) | 32K+ | 100+ tok/s |
+
+Generation speed scales roughly linearly with cores for a 1.7B Q4 model.
+
+### Loading a bigger model, e.g. OpenAI's gpt-oss
+
+The engine bundled here (llama.cpp 0.8.0) already supports the `gpt-oss`
+architecture, its MXFP4 weights and the Harmony token format, so no rebuild is
+needed — only the weights:
+
+```bash
+# on a machine that can reach Hugging Face (this sandbox cannot)
+huggingface-cli download ggml-org/gpt-oss-20b-GGUF gpt-oss-20b-MXFP4.gguf \
+  --local-dir models/
+
+MODEL_FILE=models/gpt-oss-20b-MXFP4.gguf npm start
+```
+
+The vendor and parameter count are read from the file name, so `/api/health`
+and the UI badge switch to `OpenAI` / `20B` on their own. gpt-oss has its own
+chat template and Harmony channels; pass them through with
+
+```bash
+ENGINE_CHAT_TEMPLATE=gguf      # default: use the template embedded in the GGUF
+ENGINE_REASONING_FORMAT=deepseek   # optional, to surface thinking in the UI
+```
+
+The engine refuses to start a model that will not fit rather than letting the
+kernel OOM-kill it halfway through loading:
+
+```
+[engine] not enough memory for gpt-oss-20b-MXFP4.gguf: needs about 14.7 GB
+(weights 13.0 GB + KV cache 0.5 GB + buffers), this machine has 3.8 GB total
+with no swap.
+```
+
+Override with `MODEL_SKIP_MEMORY_CHECK=1` if the estimate is wrong for your box
+— for example when the weights are mmapped from a fast disk, or when you know
+the machine has swap.
+
+## Health and operations
+
+```bash
+curl -s localhost:3000/api/health          # liveness + engine state
+curl -s localhost:3000/api/engine/logs -b <cookie>   # last 120 engine lines
+curl -X POST localhost:3000/api/engine/restart -b <cookie>
+```
+
+`/api/health` returns `200` as long as the server is up; look at
+`model.state` (`ready` / `starting` / `error`) for the engine. The Docker
+`HEALTHCHECK` uses the same endpoint.
+
+Kill the process with `SIGTERM`/`SIGINT` and it stops `llama-server` cleanly.
+
+## Notes
+
+- **Sessions** live in `data/sessions.json` (opaque tokens, sliding expiry).
+  Deleting that file signs everyone out.
+- **Chats** live in `data/conversations.json`; everything is per-session, so a
+  second person logging in with the shared password sees an empty sidebar.
+- **Backups**: copy `data/`. It is the entire state of the app.

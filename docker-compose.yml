@@ -1,0 +1,46 @@
+# Deploy Kosmos AI as a public, always-on web app (with a stable URL)
+#
+#   docker compose up -d --build
+#
+# First build compiles llama.cpp v0.8.0 and downloads the LFM3-1.7B weights
+# (~1.1 GB) from Hugging Face, so budget ~25 min on a 2-core box. After that
+# everything runs offline.
+#
+# The password comes from .env (see .env.example). Never commit it.
+
+services:
+  kosmos:
+    build:
+      context: .
+      args:
+        # Q4_K_M ~1.1 GB · Q5_K_M ~1.26 GB (better Arabic) · Q8_0 ~1.85 GB
+        QUANT: ${QUANT:-Q4_K_M}
+    image: kosmos-ai:latest
+    container_name: kosmos
+    restart: unless-stopped
+    ports:
+      - "${PUBLIC_PORT:-3000}:3000"
+    environment:
+      APP_PASSWORD: ${APP_PASSWORD:-Kosmos@2026}
+      CTX_SIZE: ${CTX_SIZE:-8192}
+      ENGINE_THREADS: ${ENGINE_THREADS:-4}
+      # The model plus its KV cache needs ~1.4 GB at Q4_K_M. Keep the container
+      # inside the box so a big prompt degrades gracefully instead of OOMing.
+      NODE_OPTIONS: --max-old-space-size=768
+    volumes:
+      # chats, projects and sessions survive a rebuild
+      - kosmos-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 180s
+      retries: 3
+    # sensible defaults for a 2-core / 2 GB VPS
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+volumes:
+  kosmos-data:

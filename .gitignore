@@ -1,23 +1,24 @@
 node_modules/
 .env
 .password
+.session-secret
 
-# model weights (downloaded by scripts/download-model.sh)
+# model weights (fetched by scripts/download-model.sh) — never commit 1 GB blobs
 models/*.gguf
 models/parts/
 models/**
 
-# llama.cpp source + build (created by scripts/build-llama.sh)
-llama.cpp
+# llama.cpp build output (scripts/build-engine.sh) — rebuilt, not committed
 llama.cpp/
-
-# misc
 .build/
+
+# runtime data
+data/*.json
 *.log
 .DS_Store
 
-# session signing secret (auto-generated, keeps logins alive across restarts)
-.session-secret
+# test-only smoke weights (never committed)
+.smoke/
 
-# vendored llama.cpp source (installed by scripts/fetch-engine.sh)
-engine/
+# runtime data (sessions, chats, generated template)
+data/
