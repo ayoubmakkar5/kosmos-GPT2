@@ -128,12 +128,17 @@
     ],
   };
 
-  let lang = localStorage.getItem('kosmos_lang') || 'ar';
+  let lang = 'ar';
+  try {
+    lang = localStorage.getItem('kosmos_lang') || 'ar';
+  } catch {}
   const t = (k) => (I18N[lang] && I18N[lang][k]) || (I18N.en[k] || k);
 
   function applyLang(next) {
     lang = next;
-    localStorage.setItem('kosmos_lang', lang);
+    try {
+      localStorage.setItem('kosmos_lang', lang);
+    } catch {}
     document.documentElement.lang = lang;
     document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
     document.querySelectorAll('[data-i18n]').forEach((el) => {
@@ -160,6 +165,7 @@
     conversations: [],
     currentId: null,
     mode: 'code',
+    token: '',
     streaming: false,
     abort: null,
   };
@@ -386,6 +392,38 @@
 
   const currentConv = () => state.conversations.find((c) => c.id === state.currentId);
 
+  // Session token fallback (used when cookies are blocked inside preview iframes)
+  function getToken() {
+    if (state.token) return state.token;
+    try {
+      return sessionStorage.getItem('kosmos_token') || localStorage.getItem('kosmos_token') || '';
+    } catch {
+      return '';
+    }
+  }
+  function setToken(tok) {
+    if (!tok) return;
+    state.token = tok;
+    try {
+      localStorage.setItem('kosmos_token', tok);
+      sessionStorage.setItem('kosmos_token', tok);
+    } catch {}
+  }
+  function clearToken() {
+    state.token = '';
+    try {
+      localStorage.removeItem('kosmos_token');
+      sessionStorage.removeItem('kosmos_token');
+    } catch {}
+  }
+  function apiFetch(url, opts = {}) {
+    const tok = getToken();
+    opts.credentials = 'same-origin';
+    opts.headers = { ...(opts.headers || {}), 'Cache-Control': 'no-cache' };
+    if (tok) opts.headers.Authorization = `Bearer ${tok}`;
+    return fetch(url, opts);
+  }
+
   function renderHistory() {
     historyList.innerHTML = '';
     if (!state.conversations.length) {
@@ -580,7 +618,7 @@
     };
 
     try {
-      const res = await fetch('/api/chat', {
+      const res = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -689,7 +727,7 @@
 
   async function pollStatus() {
     try {
-      const res = await fetch('/api/me', { headers: { 'Cache-Control': 'no-cache' } });
+      const res = await apiFetch('/api/me');
       const data = await res.json();
       state.authed = data.authed;
       if (data.model) state.model = { ...state.model, ...data.model };
@@ -728,13 +766,14 @@
     loginError.textContent = '';
     loginBtn.disabled = true;
     try {
-      const res = await fetch('/api/login', {
+      const res = await apiFetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: passwordInput.value }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok) {
+        setToken(data.token || '');
         passwordInput.value = '';
         showApp();
       } else if (res.status === 429) {
@@ -756,7 +795,8 @@
   });
 
   $('#logout').addEventListener('click', async () => {
-    await fetch('/api/logout', { method: 'POST' }).catch(() => {});
+    await apiFetch('/api/logout', { method: 'POST' }).catch(() => {});
+    clearToken();
     state.authed = false;
     showGate();
   });
@@ -848,7 +888,7 @@
     applyLang(lang);
     updateSendState();
     try {
-      const res = await fetch('/api/me');
+      const res = await apiFetch('/api/me');
       const data = await res.json();
       state.authed = data.authed;
       if (data.model) state.model = { ...state.model, ...data.model };

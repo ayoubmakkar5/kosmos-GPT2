@@ -186,7 +186,13 @@ function readBody(req, limitBytes = 512 * 1024) {
 
 function isAuthed(req) {
   const cookies = parseCookies(req);
-  return verifyToken(cookies.km_session);
+  if (verifyToken(cookies.km_session)) return true;
+  // Fallback for embedded/preview frames where third-party cookies are blocked
+  const auth = req.headers.authorization;
+  if (typeof auth === 'string' && auth.startsWith('Bearer ')) {
+    return verifyToken(auth.slice(7).trim());
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -629,7 +635,7 @@ const server = http.createServer(async (req, res) => {
       `km_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(
         SESSION_TTL_MS / 1000
       )}` + (isHttps(req) ? '; Secure' : '');
-    return json(res, 200, { ok: true }, { 'Set-Cookie': cookie });
+    return json(res, 200, { ok: true, token }, { 'Set-Cookie': cookie });
   }
 
   if (p === '/api/logout' && req.method === 'POST') {
