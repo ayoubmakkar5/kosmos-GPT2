@@ -747,9 +747,41 @@ function sessionFrom(req) {
   return null;
 }
 
+/**
+ * One line per request, so the server log is a readable narrative of what the
+ * browser actually did: which page loaded, whether the session existed, which
+ * transport carried it, and whether the request looked framed. This is how a
+ * preview that cannot be opened or screenshotted from the sandbox is still
+ * observable — the log describes it instead.
+ *
+ * Set LOG_REQUESTS=0 to silence it.
+ */
+const LOG_REQUESTS = process.env.LOG_REQUESTS !== '0';
+
+function logRequest(req, res, pathname, extra = '') {
+  if (!LOG_REQUESTS) return;
+  const started = Date.now();
+  res.on('finish', () => {
+    const ms = Date.now() - started;
+    const origin = req.headers.origin;
+    const framed = req.headers['sec-fetch-dest'] === 'iframe' || req.headers['sec-fetch-site'] === 'cross-site' || origin === 'null';
+    const bits = [
+      String(res.statusCode),
+      req.method,
+      pathname,
+      `${ms}ms`,
+      origin === 'null' ? 'opaque-origin' : (framed ? 'framed' : ''),
+      extra
+    ].filter(Boolean);
+    console.log(`[req] ${bits.join(' ')}`);
+  });
+}
+
 async function handler(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const pathname = url.pathname;
+
+  logRequest(req, res, pathname);
 
   // security headers that are safe for a same-origin SPA
   res.setHeader('x-content-type-options', 'nosniff');
@@ -781,7 +813,17 @@ async function handler(req, res) {
         res.writeHead(204);
         return res.end();
       }
-      return await handleApi(req, res, sessionFrom(req));
+      const session = sessionFrom(req);
+      // record which transport won, so the log distinguishes "cookie worked"
+      // from "fell back to the bearer token" inside an embedded preview
+      res.on('finish', () => {
+        if (!LOG_REQUESTS) return;
+        const open = pathname === '/api/login' || pathname === '/api/logout' || pathname === '/api/health';
+        const via = session ? session.via : (open ? 'public' : 'anonymous');
+        const note = !session && !open ? ' (no session → ' + res.statusCode + ')' : '';
+        console.log(`[auth] ${req.method} ${pathname} -> ${via}${note}`);
+      });
+      return await handleApi(req, res, session);
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       return sendJSON(res, 405, { error: 'method_not_allowed' });
