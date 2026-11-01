@@ -14,6 +14,7 @@
 
 | | |
 |---|---|
+| 🚀 **نشر بضغطة** | Docker + openpouch + Render جاهزة، والمصدر مضمّن للبناء بلا إنترنت |
 | 🔐 **حماية بكلمة سر** | صفحة دخول، جلسة موقّعة بـ HMAC في كوكي `HttpOnly`، تحديد محاولات الدخول (10 محاولات / 10 دقائق لكل IP) |
 | 🧠 **نموذج حقيقي** | `Qwen3-0.6B-Q4_K_M.gguf` يعمل عبر `llama-server` (متوافق مع OpenAI) |
 | ⚡ **بثّ مباشر** | الرد يظهر حرفاً بحرف عبر SSE مع إحصاءات `tok/s` |
@@ -27,13 +28,16 @@
 ## 🚀 التشغيل
 
 ```bash
-# 1) بناء llama.cpp (مرة واحدة فقط — يأخذ بضع دقائق على CPU)
-bash scripts/build-llama.sh
+# 1) جلب مصدر llama.cpp المُثبَّت (مرة واحدة، ~55MB)
+bash scripts/fetch-engine.sh
 
-# 2) تنزيل أوزان النموذج الحقيقية (مرة واحدة، ~484MB، مع تحقّق SHA-256)
+# 2) بناء llama-server (مرة واحدة — عدة دقائق على CPU)
+bash scripts/build-engine.sh
+
+# 3) تنزيل أوزان Qwen3 الحقيقية (مرة واحدة، ~484MB، مع تحقّق SHA-256)
 bash scripts/download-model.sh
 
-# 3) تشغيل الموقع
+# 4) تشغيل الموقع
 APP_PASSWORD='كلمة_السر_الخاصة_بك' npm start
 ```
 
@@ -82,7 +86,8 @@ server.js               خادم Node (مصادقة + بثّ + تشغيل الن
 public/index.html       واجهة الموقع
 public/styles.css       التصميم (داكن، RTL/LTR)
 public/app.js           منطق الواجهة (بثّ، Markdown، تلوين، معاينة)
-scripts/build-llama.sh  بناء llama.cpp
+scripts/fetch-engine.sh جلب مصدر llama.cpp المُثبَّت إلى ./engine
+scripts/build-engine.sh بناء llama-server من المصدر المضمّن
 scripts/download-model.sh تنزيل أوزان Qwen3 الحقيقية والتحقق منها
 models/                 ملف GGUF (غير مرفوع إلى Git)
 ```

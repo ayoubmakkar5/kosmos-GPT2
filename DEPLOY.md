@@ -6,6 +6,40 @@
 > 🔐 لا تنسَ ضبط متغيّر البيئة `APP_PASSWORD` على الاستضافة، وإلا سيُستخدم الافتراضي
 > `Kosmos@2026`.
 
+
+---
+
+## الخيار 0 — openpouch.sh (الأنسب لوكلاء البرمجة، بلا حساب)
+
+openpouch ينشر المجلد كحاوية Node حقيقية ويعطيك رابطاً مباشراً
+`https://<slug>.openpouch.sh` بعد بناء المشروع على خوادمه.
+
+### أ) من GitHub Actions (يعمل حتى لو كانت شبكتك تحجب openpouch.sh)
+
+1. ارفع الفرع إلى `main` (أو شغّل الـ workflow من تبويب **Actions**).
+2. **Actions → Deploy to openpouch → Run workflow** وأدخل كلمة السر.
+3. الرابط يظهر في ملخّص التشغيل وفي `openpouch-deploy` artifact.
+
+### ب) من جهازك مباشرة (أمر واحد)
+
+```bash
+git clone https://github.com/ayoubmakkar5/kosmos-GPT2 && cd kosmos-GPT2
+bash scripts/fetch-engine.sh          # يجلب مصدر llama.cpp إلى ./engine (~55MB)
+npx -y openpouch deploy . \
+  --health-path /api/health \
+  --var APP_PASSWORD='Kosmos@2026' \
+  --json
+```
+
+النتيجة: رابط `https://<slug>.openpouch.sh` + رابط claim لضمّ النشر لحسابك.
+
+> ⚠️ الحاوية تحتاج **~2 GB RAM** لتحميل نموذج Qwen3-0.6B. إذا كانت الحصة الافتراضية
+> لـ openpouch أقل، سيبقى الموقع يعمل لكن حالة النموذج ستظهر «تحميل» حتى تتوفر الذاكرة.
+> في هذه الحالة استخدم خطة أعلى أو الخيار 1/2 أدناه.
+
+> ملاحظة: كلمة السر تُحقن كـ **متغير بيئة** (لا تُكتب في الملفات المرفوعة)،
+> ويمكنك تغييرها بإعادة النشر بنفس الأمر مع قيمة جديدة.
+
 ---
 
 ## الخيار 1 — أي استضافة تدعم Docker (الأسهل والأنسب)
