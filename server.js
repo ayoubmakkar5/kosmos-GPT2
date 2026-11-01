@@ -453,6 +453,8 @@ async function apiChat(req, res, session) {
         top_k: config.model.recommend.topK,
         repeat_penalty: config.model.recommend.repetitionPenalty,
         max_tokens: Number(body.maxTokens ?? 1024),
+        // ask llama-server for the token counts so tok/s is real, not guessed
+        stream_options: { include_usage: true },
         // Belt-and-braces: even a fine-tune that lost its template cannot
         // keep generating past its own chat markers.
         stop: config.model.stop,

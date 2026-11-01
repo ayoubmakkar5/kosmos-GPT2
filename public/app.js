@@ -441,6 +441,27 @@ function updateModelBadge() {
     ? `llama.cpp · ${m.context} ctx · ${m.loadSeconds}s load`
     : m.error || t.modelLoading;
   $('#gateModel').textContent = m.name || 'LFM3-1.7B';
+
+  // Honesty: if the weights on disk are not the LFM3 checkpoint, say so on the
+  // badge instead of implying the big model is running.
+  const badge = $('#modelBadge');
+  let warn = document.getElementById('standInNote');
+  if (m.isTargetModel === false) {
+    if (!warn) {
+      warn = document.createElement('div');
+      warn.id = 'standInNote';
+      warn.className = 'standin-note';
+      warn.textContent = state.lang === 'ar'
+        ? '⚠️ النموذج المحمّل بديل تجريبي — أوزان LFM3 لم تُنزَّل بعد'
+        : '⚠️ Stand-in model loaded — the LFM3 weights are not downloaded yet';
+      badge.querySelector('.model-badge-text').appendChild(warn);
+    }
+    warn.textContent = state.lang === 'ar'
+      ? '⚠️ النموذج المحمّل بديل تجريبي — أوزان LFM3 لم تُنزَّل بعد'
+      : '⚠️ Stand-in model loaded — the LFM3 weights are not downloaded yet';
+  } else if (warn) {
+    warn.remove();
+  }
 }
 
 async function pollModel() {
@@ -801,6 +822,7 @@ async function send(presetText) {
           throw new Error(payload.message || 'stream error');
         } else if (event === 'done') {
           acc = payload.content ?? acc;
+          setStats(payload.stats);
           if (rafPending) { rafPending = false; }
           body.innerHTML = renderMarkdown(acc);
           scrollToBottom();
@@ -857,6 +879,16 @@ function stableTail(raw) {
   const tail = s.slice(open);
   if (/^<\|?[A-Za-z_]*$/.test(tail) && tail.length < 16) return s.slice(0, open);
   return s;
+}
+
+function setStats(stats) {
+  const el = $('#stats');
+  if (!el) return;
+  if (!stats || !stats.seconds) { el.textContent = ''; return; }
+  const parts = [`${stats.seconds.toFixed(1)}s`];
+  if (stats.tokens) parts.push(`${stats.tokens} tok`);
+  if (stats.tokensPerSecond) parts.push(`${stats.tokensPerSecond} ${t.tokensPerSecond}`);
+  el.textContent = parts.join(' · ');
 }
 
 function setSendState(kind) {

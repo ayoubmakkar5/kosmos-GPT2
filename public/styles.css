@@ -968,3 +968,15 @@ html[data-theme="light"] .err-note { color: #b42318; }
   font-size: 13px;
   padding: 7px 10px;
 }
+
+/* stand-in model warning on the badge */
+.standin-note {
+  margin-top: 6px;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--warn);
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  background: rgba(251, 191, 36, 0.08);
+  border-radius: 7px;
+  padding: 4px 7px;
+}
