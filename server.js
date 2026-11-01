@@ -284,8 +284,16 @@ async function pingLlama(timeoutMs = 1500) {
   });
 }
 
-function startEngine() {
+async function startEngine() {
   if (engine.starting || engine.ready) return;
+
+  // If a llama-server is already listening (e.g. restarted app), adopt it.
+  if (await pingLlama(1200)) {
+    engine.ready = true;
+    engine.starting = false;
+    console.log('[engine] reusing already-running llama-server on port ' + LLAMA_PORT);
+    return;
+  }
 
   if (!fs.existsSync(MODEL_PATH)) {
     engine.error = `Model file not found: ${MODEL_PATH}`;
