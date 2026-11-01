@@ -98,6 +98,25 @@ const hasCodeFence = (s) => /```/.test(s);
 async function main() {
   console.log(`\n\x1b[1mKosmos AI — e2e\x1b[0m  ${BASE}\n`);
 
+  // ───────────────────────────────────────── template-marker cleanup units
+  // LFM3 stops on <|im_end|>, so its answer never contains markers. A fine-tune
+  // that lost the template can keep talking and replay the prompt instead; the
+  // serverside cleaner must keep the answer and drop only the markers.
+  group('Answer cleaning (unit)');
+  {
+    const { cleanReply, stablePrefix } = await import('../server.js');
+    check('keeps a clean answer untouched', cleanReply('Hello there!') === 'Hello there!');
+    check('keeps the answer when the model replays the prompt',
+      cleanReply('Hello there!<|im_end|><|im_start|>user what is 2+2<|im_end|>') === 'Hello there!',
+      JSON.stringify(cleanReply('Hello there!<|im_end|><|im_start|>user what is 2+2<|im_end|>')));
+    check('strips a bare end marker', cleanReply('مرحبا<|im_end|>') === 'مرحبا');
+    check('drops an echoed system turn', cleanReply('<|im_start|>system rules<|im_end|>Hi') === 'Hi');
+    check('strips a leading role prefix', cleanReply('assistant: Hi') === 'Hi');
+    check('plain "<" in prose survives', cleanReply('if a < b then') === 'if a < b then');
+    check('holds back a half-received marker', stablePrefix('hello <|im_en') === 'hello ');
+    check('lets a real "<" through immediately', stablePrefix('a < b') === 'a < b');
+  }
+
   // ─────────────────────────────────────────────────────────── static + auth
   group('Static app');
   {
