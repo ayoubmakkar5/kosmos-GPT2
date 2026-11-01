@@ -19,7 +19,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   deploy:
@@ -80,24 +79,16 @@ jobs:
           "
           exit $code
 
-      - name: Report failure details as an issue
-        if: failure() && !contains(github.event_name, 'schedule')
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          {
-            echo '```json'
-            tail -c 4000 /tmp/deploy.json 2>/dev/null || echo '(no stdout)'
-            echo '```'
-            echo
-            echo '### stderr'
-            echo '```'
-            tail -c 4000 /tmp/deploy.err 2>/dev/null || echo '(no stderr)'
-            echo '```'
-          } > /tmp/issue.md
-          gh issue create --repo "$GITHUB_REPOSITORY" \
-            --title "openpouch deploy failed (run $GITHUB_RUN_ID)" \
-            --body-file /tmp/issue.md || true
+      - name: Upload deploy attempt details (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openpouch-attempt
+          path: |
+            /tmp/deploy.json
+            /tmp/deploy.err
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload deployment evidence
         if: always()
