@@ -158,13 +158,34 @@ function parseCookies(header) {
   return out;
 }
 
-function serializeCookie(name, value, { maxAge, httpOnly = true, sameSite = 'Lax', path = '/' } = {}) {
+function serializeCookie(name, value, { maxAge, httpOnly = true, sameSite = 'Lax', path = '/', secure = false } = {}) {
   const parts = [`${name}=${encodeURIComponent(value)}`];
   parts.push(`Path=${path}`);
   if (httpOnly) parts.push('HttpOnly');
+  if (secure) parts.push('Secure');
   parts.push(`SameSite=${sameSite}`);
   if (typeof maxAge === 'number') parts.push(`Max-Age=${Math.floor(maxAge)}`);
   return parts.join('; ');
 }
 
-module.exports = { Sessions, LoginGuard, passwordMatches, parseCookies, serializeCookie };
+/**
+ * How the browser will reach us — decides the cookie policy.
+ *
+ *  - direct HTTPS            → Secure, SameSite=None (needed only if embedded)
+ *  - behind HTTPS proxy      → Secure, SameSite=Lax
+ *  - plain HTTP (LAN/dev)    → no Secure, SameSite=Lax
+ *
+ * A `Secure` cookie on an http:// origin is silently dropped by every browser,
+ * which would make the login appear to succeed and then bounce straight back to
+ * the gate — so this must be decided per request, not baked in.
+ */
+function cookiePolicy(req) {
+  const forwarded = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+  const secure = forwarded ? forwarded === 'https' : Boolean(req.socket.encrypted);
+  // SameSite=None requires Secure; only use it when we are actually on TLS.
+  const embedded = String(req.headers['sec-fetch-dest'] || '') === 'iframe';
+  const sameSite = secure && embedded ? 'None' : 'Lax';
+  return { secure, sameSite: secure ? sameSite : 'Lax' };
+}
+
+module.exports = { Sessions, LoginGuard, passwordMatches, parseCookies, serializeCookie, cookiePolicy };

@@ -15,7 +15,7 @@ const zlib = require('zlib');
 const config = require('./config');
 const engine = require('./engine-client');
 const { Store } = require('./store');
-const { Sessions, LoginGuard, passwordMatches, parseCookies, serializeCookie } = require('./auth');
+const { Sessions, LoginGuard, passwordMatches, parseCookies, serializeCookie, cookiePolicy } = require('./auth');
 const { buildSystemPrompt, fitHistory } = require('./prompts');
 const { LFM3_CHAT_TEMPLATE } = require('./chat-template');
 
@@ -241,18 +241,20 @@ async function apiLogin(req, res) {
     ip
   });
   const maxAge = Math.floor((session.expiresAt - Date.now()) / 1000);
+  const policy = cookiePolicy(req);
   sendJSON(res, 200, {
     ok: true,
-    expiresAt: session.expiresAt
+    expiresAt: session.expiresAt,
+    cookie: policy
   }, {
-    'set-cookie': serializeCookie(config.session.cookie, session.token, { maxAge })
+    'set-cookie': serializeCookie(config.session.cookie, session.token, { maxAge, ...policy })
   });
 }
 
 function apiLogout(req, res, session) {
   if (session) sessions.destroy(session.token);
   sendJSON(res, 200, { ok: true }, {
-    'set-cookie': serializeCookie(config.session.cookie, '', { maxAge: 0 })
+    'set-cookie': serializeCookie(config.session.cookie, '', { maxAge: 0, ...cookiePolicy(req) })
   });
 }
 
@@ -646,6 +648,7 @@ async function handleApi(req, res, session) {
   if (p === '/me') {
     return sendJSON(res, 200, {
       authed: true,
+      cookie: cookiePolicy(req),
       expiresAt: session.expiresAt,
       model: engine.info(),
       counts: {
@@ -707,7 +710,9 @@ async function handler(req, res) {
   // security headers that are safe for a same-origin SPA
   res.setHeader('x-content-type-options', 'nosniff');
   res.setHeader('referrer-policy', 'same-origin');
-  res.setHeader('x-frame-options', 'SAMEORIGIN');
+  // No X-Frame-Options: the app is a plain same-origin SPA with no sensitive
+  // framing story, and blocking framing breaks embedded previews.
+  res.setHeader('content-security-policy', "frame-ancestors *");
 
   try {
     if (pathname.startsWith('/api/') || pathname === '/api') {
