@@ -1,15 +1,25 @@
-# اختبارات Kosmos Code
 
-اختبارات آلية تشغّل الواجهة الحقيقية (DOM عبر jsdom) مقابل الخادم الحقيقي والنموذج المحلي.
+# Tests
+
+Two suites, both zero-install except the optional UI one.
+
+| Suite | Runs against | Needs |
+|---|---|---|
+| `tests/e2e.mjs` | a running server (`:3000`) | nothing — plain `fetch` |
+| `tests/ui.mjs` | a running server (`:3000`) | `npm i jsdom --no-save` |
 
 ```bash
-# 1) شغّل الخادم
-node server.js
+npm start &                      # or: MODEL_FILE=... node server.js
 
-# 2) في طرفية أخرى
-cd tests && npm init -y >/dev/null && npm i jsdom
-node e2e.mjs     # 38 اختبار: الدخول، الحماية، توليد الكود، الأدوات، اللغة، البقاء مسجلاً…
-node hard.mjs    # 15 اختبار: السياق، الإيقاف، التزامن، حالات حدّية، أمان
+node tests/e2e.mjs               # API, auth, streaming, isolation  (54+ checks)
+SKIP_CHAT=1 node tests/e2e.mjs   # same, without waiting for the model
+
+npm i jsdom --no-save
+node tests/ui.mjs                # real front-end in jsdom        (59 checks)
 ```
 
-متغيّرات اختيارية: `ORIGIN` (افتراضي `http://127.0.0.1:3000`) و`APP_PASSWORD`.
+Environment variables: `BASE`, `PASSWORD`/`APP_PASSWORD`, `SKIP_CHAT`.
+
+`tests/ui.mjs` boots the actual `public/index.html` + `public/app.js` in jsdom with
+a real `fetch`, so it catches template, i18n, streaming and rendering regressions
+that a pure API test cannot see.

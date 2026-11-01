@@ -1,117 +1,122 @@
-# ⚡ Kosmos Code — مساعد البرمجة بالذكاء الاصطناعي
+# Kosmos AI — LFM3-1.7B
 
-موقع برمجة كامل بالذكاء الاصطناعي، **محمي بكلمة سر**، ويشغّل **نموذج Qwen3 حقيقي** (الأوزان
-الحقيقية لـ `Qwen/Qwen3-0.6B` بصيغة GGUF بكمّية `Q4_K_M`، ~484 ميغابايت) على **llama.cpp**
-محلياً على المعالج — بدون أي واجهة API خارجية، أي أن النموذج يعمل فعلياً على الخادم.
+**A password-protected chat workspace that runs Liquid AI's LFM3-1.7B on your own machine.**
+No API keys, no cloud inference: `llama.cpp` loads the real GGUF weights and answers on the CPU.
 
-> A password-protected AI coding web app powered by a **real local Qwen3 model**
-> (`Qwen3-0.6B`, Q4_K_M GGUF) running on **llama.cpp**. No external AI API is used:
-> inference happens on this machine.
+<div dir="rtl">
+
+**مساحة محادثة محمية بكلمة سر، تشغّل نموذج LFM3-1.7B من Liquid AI محلياً.**
+بلا مفاتيح API وبلا خدمات سحابية: محرّك `llama.cpp` يحمّل الأوزان الحقيقية ويجيب على المعالج.
+
+</div>
 
 ---
 
-## ✨ المزايا
+## Why LFM3-1.7B
 
 | | |
 |---|---|
-| 🚀 **نشر بضغطة** | Docker + openpouch + Render جاهزة، والمصدر مضمّن للبناء بلا إنترنت |
-| 🔐 **حماية بكلمة سر** | صفحة دخول، جلسة موقّعة بـ HMAC في كوكي `HttpOnly`، تحديد محاولات الدخول (10 محاولات / 10 دقائق لكل IP) |
-| 🧠 **نموذج حقيقي** | `Qwen3-0.6B-Q4_K_M.gguf` يعمل عبر `llama-server` (متوافق مع OpenAI) |
-| ⚡ **بثّ مباشر** | الرد يظهر حرفاً بحرف عبر SSE مع إحصاءات `tok/s` |
-| 💬 **مساحة عمل** | محادثات محفوظة، أوضاع: توليد كود / شرح / تصحيح أخطاء، اختيار لغة الهدف |
-| 🎨 **تلوين وتنسيق** | Markdown + تلوين برمجي للكود |
-| 📋 **أدوات الكود** | نسخ، تنزيل الملف، و**تشغيل مباشر** لـ HTML/CSS/JS في معاينة معزولة (sandbox) |
-| 🌐 **عربي/إنجليزي** | واجهة كاملة RTL/LTR مع زر تبديل |
+| Parameters | 1.73B (tri-hybrid: gated short convolutions + sliding-window + global attention) |
+| Memory at 4-bit | ≈ 1 GB of weights — this repo's default `Q4_K_M` is 1.12 GB |
+| Native context | 256K tokens (the app runs 8K by default; raise `CTX_SIZE`) |
+| Languages | 16, **including Arabic** |
+| Published scores | 49.37 average over 29 benchmarks (above Qwen3.5-9B's 47.24, per Liquid AI) |
+| License | LFM Open License v1.0 — free commercial use under $10M revenue |
 
----
+> Known weak spots, per Liquid's own report and independent testing: broad world knowledge and agentic coding. It is strong at conversation, instruction following, structured output and tool calls.
 
-## 🚀 التشغيل
+## Features
+
+- **Streaming chat** over SSE, with a stop button that keeps what already streamed
+- **Modes**: conversation (default), code, explain, debug — each with its own system prompt
+- **Artifacts**: a side panel that opens any fenced code block, with syntax highlighting, copy, download, and a sandboxed live preview for HTML/CSS/JS
+- **Projects**: reusable instruction sets plus knowledge documents injected into every chat in that project
+- **Attachments**: text/code files are inlined; images are sent to the model's vision slot when a multimodal projector is configured
+- **Think-on-demand**: `--reasoning-format deepseek` plumbing is wired, the UI shows reasoning in a collapsible block
+- **Arabic-first UI** (RTL) with an instant English toggle
+- **Password gate** with server-side sessions, HttpOnly cookie, sliding expiry and a brute-force limiter
+- **Zero runtime dependencies** — pure Node `http`, no Express, no bundler
+
+## Quick start
 
 ```bash
-# 1) جلب مصدر llama.cpp المُثبَّت (مرة واحدة، ~55MB)
-bash scripts/fetch-engine.sh
-
-# 2) بناء llama-server (مرة واحدة — عدة دقائق على CPU)
+# 1. build llama.cpp v0.8.0 (the first release that knows the `lfm3` architecture)
 bash scripts/build-engine.sh
 
-# 3) تنزيل أوزان Qwen3 الحقيقية (مرة واحدة، ~484MB، مع تحقّق SHA-256)
+# 2. fetch the weights from Hugging Face (~1.1 GB)
 bash scripts/download-model.sh
 
-# 4) تشغيل الموقع
-APP_PASSWORD='كلمة_السر_الخاصة_بك' npm start
+# 3. run
+APP_PASSWORD='Kosmos@2026' npm start
+# → http://localhost:3000
 ```
 
-ثم افتح: <http://localhost:3000>
+The first launch compiles for a few minutes; after that the model loads in ~2 s.
 
-كلمة السر الافتراضية إن لم تضبط `APP_PASSWORD`: **`Kosmos@2026`**
-
-> ⚠️ يُنصح دائماً بضبط `APP_PASSWORD` و`SESSION_SECRET` في بيئة الإنتاج.
-
----
-
-## 🔧 متغيّرات البيئة
-
-| المتغيّر | الافتراضي | الوصف |
-|---|---|---|
-| `PORT` | `3000` | منفذ الموقع |
-| `HOST` | `0.0.0.0` | عنوان الاستماع |
-| `APP_PASSWORD` | `Kosmos@2026` | كلمة سر الدخول (تُخزَّن كبصمة SHA-256 في الذاكرة) |
-| `SESSION_SECRET` | عشوائي | مفتاح توقيع الجلسات (ثبّته لتبقى الجلسات بعد إعادة التشغيل) |
-| `MODEL_PATH` | `models/Qwen3-0.6B-Q4_K_M.gguf` | مسار ملف GGUF |
-| `MODEL_NAME` | `Qwen3-0.6B` | الاسم المعروض |
-| `MODEL_QUANT` | `Q4_K_M` | التكميم المعروض |
-| `CTX_SIZE` | `4096` | حجم السياق |
-| `LLAMA_PORT` | `8080` | منفذ `llama-server` الداخلي |
-| `LLAMA_SERVER_BIN` | `llama.cpp/build/bin/llama-server` | مسار ملف llama-server |
-
----
-
-## 🧩 كيف يعمل
-
-```
-متصفح  ──HTTPS──▶  server.js (Node, صفر اعتماديات)
-                     │  ├─ /api/login   → تحقّق كلمة السر + كوكي جلسة HMAC
-                     │  ├─ /api/chat    → SSE بثّ الردود
-                     │  └─ /api/me      → حالة النموذج
-                     └── HTTP 127.0.0.1:8080 ──▶ llama-server ──▶ Qwen3-0.6B-Q4_K_M.gguf
-```
-
-* قالب المحادثة المستخدم هو قالب Qwen3 الأصلي (`<|im_start|>…<|im_end|>` مع `/no_think`).
-* لا توجد أي اعتمادية على npm: الخادم مبني على `node:http` فقط.
-
-## 📁 بنية المشروع
-
-```
-server.js               خادم Node (مصادقة + بثّ + تشغيل النموذج)
-public/index.html       واجهة الموقع
-public/styles.css       التصميم (داكن، RTL/LTR)
-public/app.js           منطق الواجهة (بثّ، Markdown، تلوين، معاينة)
-scripts/fetch-engine.sh جلب مصدر llama.cpp المُثبَّت إلى ./engine
-scripts/build-engine.sh بناء llama-server من المصدر المضمّن
-scripts/download-model.sh تنزيل أوزان Qwen3 الحقيقية والتحقق منها
-models/                 ملف GGUF (غير مرفوع إلى Git)
-```
-
-## 🧪 الاختبارات
-
-المشروع مرفق باختبارات آلية تشغّل الواجهة الحقيقية مقابل الخادم والنموذج:
+### Docker
 
 ```bash
-node server.js           # في طرفية
-cd tests && npm i jsdom
-node e2e.mjs             # 38 اختبار (الدخول، الأدوات، اللغة، الجلسة…)
-node hard.mjs            # 15 اختبار (السياق، الإيقاف، التزامن، الأمان)
+docker build -t kosmos-ai .
+docker run -p 3000:3000 -e APP_PASSWORD='Kosmos@2026' kosmos-ai
 ```
 
-النتيجة الحالية: **53/53 اختباراً ناجحاً**.
+## Configuration
 
-## 🔐 ملاحظات أمنية
+Everything is an environment variable (see `config.js`).
 
-* كلمة السر تُقارن عبر بصمة SHA-256 بمقارنة زمنية ثابتة (`timingSafeEqual`).
-* كوكي الجلسة `HttpOnly` + `SameSite=Lax`، ويُضاف `Secure` تلقائياً عند HTTPS.
-* حدّ أقصى لحجم الطلب، وتحديد معدّل محاولات الدخول.
-* معاينة الكود تعمل داخل `iframe` مع `sandbox="allow-scripts"` (بدون وصول للصفحة الأصلية).
+| Variable | Default | Notes |
+|---|---|---|
+| `APP_PASSWORD` | `Kosmos@2026` | compared case-insensitively on purpose |
+| `PORT` / `HOST` | `3000` / `0.0.0.0` | |
+| `MODEL_FILE` | `models/LFM3-1.7B-Q4_K_M.gguf` | any LFM3 GGUF works |
+| `CTX_SIZE` | `8192` | 256K costs ≈1.6 GB of KV cache — raise only if you have the RAM |
+| `ENGINE_THREADS` | CPU count | generation speed is roughly linear in cores |
+| `ENGINE_GPU_LAYERS` | `0` | set to `99` on a CUDA/Metal build |
+| `ENGINE_PARALLEL` | `1` | concurrent request slots |
+| `SESSION_TTL_HOURS` | `720` | |
+| `MAX_UPLOAD_BYTES` | 12 MB | |
 
-## 📜 الترخيص
+## API
 
-MIT — أوزان النموذج مملوكة لـ Alibaba Qwen وتخضع لترخيص Apache-2.0.
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/login` | `{password, persistent}` → session cookie |
+| `POST` | `/api/logout` | destroy session |
+| `GET` | `/api/me` | session + model info |
+| `GET` | `/api/health` | liveness, engine state |
+| `GET/POST` | `/api/conversations` | list / create |
+| `GET/PATCH/DELETE` | `/api/conversations/:id` | read / rename / delete |
+| `POST` | `/api/chat` | SSE stream (`start`, `delta`, `reasoning`, `error`, `done`) |
+| `GET/POST` | `/api/projects` | list / create |
+| `GET/PATCH/DELETE` | `/api/projects/:id` | |
+| `POST/DELETE` | `/api/projects/:id/docs[/:docId]` | project knowledge |
+| `GET` | `/api/engine/logs` | last 120 lines of the llama-server log |
+| `POST` | `/api/engine/restart` | restart the engine |
+
+## Architecture
+
+```
+server.js          HTTP + auth + SSE bridge            (no dependencies)
+engine-client.js   supervises llama-server, streams tokens
+config.js          every knob, env-overridable
+auth.js            sessions, cookies, brute-force guard
+store.js           atomic JSON persistence
+prompts.js         the system prompts (conversation first, code only on request)
+chat-template.js   LFM3 prompt template handed to llama-server --jinja
+public/            the whole client (index.html, app.js, styles.css)
+scripts/           fetch + build the engine, download the weights
+tests/e2e.mjs      end-to-end suite
+```
+
+## Tests
+
+```bash
+node tests/e2e.mjs          # against a running server on :3000
+BASE=http://127.0.0.1:3000 node tests/e2e.mjs
+```
+
+The suite covers the password gate, the API surface, streaming, projects, and the static app.
+
+## License
+
+MIT for this application. LFM3-1.7B weights are © Liquid AI under the LFM Open License v1.0.

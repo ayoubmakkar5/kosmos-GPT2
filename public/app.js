@@ -1,960 +1,1323 @@
-/* =========================================================
-   Kosmos Code — front-end
-   ========================================================= */
-(() => {
-  'use strict';
+/* ============================================================================
+   Kosmos AI — single-page client (no build step, no dependencies)
+   ========================================================================== */
 
-  // -------------------------------------------------------
-  // Elements
-  // -------------------------------------------------------
-  const $ = (s) => document.querySelector(s);
-  const gate = $('#gate');
-  const app = $('#app');
-  const loginForm = $('#login-form');
-  const passwordInput = $('#password');
-  const loginError = $('#login-error');
-  const loginBtn = $('#login-btn');
-  const messagesEl = $('#messages');
-  const inputEl = $('#input');
-  const sendBtn = $('#send');
-  const segBtns = document.querySelectorAll('.seg-btn');
-  const historyList = $('#history-list');
-  const modelStatusText = $('#model-status-text');
-  const modelStatusDot = document.querySelector('#model-status .dot');
-  const engineBadgeState = $('#engine-badge-state');
-  const statsBadge = $('#stats-badge');
-  const sidebar = document.querySelector('.sidebar');
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
-  // -------------------------------------------------------
-  // i18n
-  // -------------------------------------------------------
-  const I18N = {
-    ar: {
-      tagline: 'مساعد البرمجة بالذكاء الاصطناعي · نموذج Qwen3 حقيقي يعمل محلياً',
-      passwordLabel: 'كلمة السر',
-      enter: 'دخول',
-      protected: 'محمي بكلمة سر',
-      brandSub: 'بيئة برمجة بالذكاء الاصطناعي',
-      newChat: 'محادثة جديدة',
-      history: 'المحادثات',
-      modelTitle: 'النموذج',
-      modelName: 'الاسم',
-      modelQuant: 'التكميم',
-      modelEngine: 'المشغّل',
-      modelCtx: 'السياق',
-      loading: 'جارٍ تحميل النموذج…',
-      loadingShort: 'يحمّل…',
-      ready: 'جاهز',
-      readyShort: 'جاهز',
-      logout: 'خروج',
-      welcomeTitle: 'مساحة العمل',
-      welcomeSub: 'اكتب طلبك وسيولّد النموذج الكود',
-      modeCode: 'توليد كود',
-      modeExplain: 'شرح',
-      modeDebug: 'تصحيح',
-      emptyTitle: 'ماذا نبرمج اليوم؟',
-      emptyText: 'اطلب كوداً بلغتك المفضلة، أو الصق كوداً ليشرحه أو يصلح أخطاءه النموذج المحلي Qwen3.',
-      placeholder: 'اكتب طلبك… مثال: اكتب دالة بايثون لحساب تسلسل فيبوناتشي مع اختبارات',
-      send: 'إرسال',
-      previewTitle: 'معاينة مباشرة',
-      copy: 'نسخ', copied: 'تم النسخ ✓', download: 'تنزيل', run: 'تشغيل',
-      you: 'أنت', assistant: 'Kosmos',
-      thinking: 'النموذج يفكّر…',
-      noHistory: 'لا توجد محادثات بعد',
-      stopGen: 'إيقاف',
-      regenerate: 'إعادة التوليد',
-      modelLoading: 'النموذج يُحمَّل الآن على الخادم… سيبدأ الرد خلال لحظات.',
-      newBadge: 'محادثة',
-      errorGeneric: 'حدث خطأ. حاول مرة أخرى.',
-      loggedOut: 'تم تسجيل الخروج',
-      noModel: 'النموذج غير جاهز',
-      prompts: [],
-    },
-    en: {
-      tagline: 'AI coding assistant · real Qwen3 model running locally',
-      passwordLabel: 'Password',
-      enter: 'Sign in',
-      protected: 'Password protected',
-      brandSub: 'AI-powered coding workspace',
-      newChat: 'New chat',
-      history: 'Conversations',
-      modelTitle: 'Model',
-      modelName: 'Name',
-      modelQuant: 'Quantization',
-      modelEngine: 'Engine',
-      modelCtx: 'Context',
-      loading: 'Loading model…',
-      loadingShort: 'loading…',
-      ready: 'Ready',
-      readyShort: 'ready',
-      logout: 'Sign out',
-      welcomeTitle: 'Workspace',
-      welcomeSub: 'Describe what you need and the model writes the code',
-      modeCode: 'Generate',
-      modeExplain: 'Explain',
-      modeDebug: 'Fix bugs',
-      emptyTitle: 'What are we building today?',
-      emptyText: 'Ask for code in any language, or paste code for the local Qwen3 model to explain or fix.',
-      placeholder: 'Ask for code… e.g. write a Python function for the Fibonacci sequence with tests',
-      send: 'Send',
-      previewTitle: 'Live preview',
-      copy: 'Copy', copied: 'Copied ✓', download: 'Download', run: 'Run',
-      you: 'You', assistant: 'Kosmos',
-      thinking: 'Model is thinking…',
-      noHistory: 'No conversations yet',
-      stopGen: 'Stop',
-      regenerate: 'Regenerate',
-      modelLoading: 'The model is loading on the server… the reply will start in a moment.',
-      newBadge: 'Chat',
-      errorGeneric: 'Something went wrong. Please try again.',
-      loggedOut: 'Signed out',
-      noModel: 'Model not ready',
-      prompts: [],
-    },
-  };
+/* ───────────────────────────────────────────────────────────────────────── i18n */
+const I18N = {
+  ar: {
+    dir: 'rtl',
+    gateSub: 'مساحة محادثة محمية. أدخل كلمة السر للمتابعة.',
+    password: 'كلمة السر',
+    enter: 'دخول',
+    staySignedIn: 'ابقني مسجلاً',
+    wrongPassword: 'كلمة السر غير صحيحة.',
+    tooMany: 'محاولات كثيرة. حاول بعد 10 دقائق.',
+    networkError: 'تعذّر الاتصال بالخادم.',
+    newChat: 'محادثة جديدة',
+    chats: 'المحادثات',
+    projects: 'المشاريع',
+    signOut: 'خروج',
+    modeChat: 'محادثة',
+    modeCode: 'كود',
+    modeExplain: 'شرح',
+    modeDebug: 'تصحيح',
+    welcomeTitle: 'كيف أساعدك اليوم؟',
+    welcomeSub: 'نموذج LFM3-1.7B محلي — بلا واجهات خارجية',
+    welcomeSubLong: 'محادثة، شرح، برمجة وتحليل — كل شيء يعمل محلياً بنموذج LFM3-1.7B من Liquid AI.',
+    placeholder: 'اكتب رسالتك…',
+    hint: 'Enter للإرسال · Shift+Enter لسطر جديد',
+    you: 'أنت',
+    assistant: 'Kosmos',
+    copy: 'نسخ',
+    copied: 'تم النسخ',
+    regenerate: 'إعادة التوليد',
+    openArtifact: 'فتح',
+    run: 'تشغيل',
+    download: 'تنزيل',
+    thinking: 'يفكر…',
+    stopped: 'توقف',
+    emptyChats: 'لا محادثات بعد',
+    delete: 'حذف',
+    newProject: 'مشروع جديد',
+    projectName: 'اسم المشروع',
+    instructions: 'تعليمات المشروع',
+    instructionsHint: 'تُضاف تلقائياً إلى كل محادثة داخل المشروع',
+    knowledge: 'ملفات المعرفة',
+    addDoc: 'إضافة نص',
+    docName: 'اسم الملف',
+    docText: 'ألصق محتوى الملف هنا…',
+    save: 'حفظ',
+    cancel: 'إلغاء',
+    noProjects: 'لا مشاريع بعد',
+    projectSaved: 'تم الحفظ',
+    deleted: 'تم الحذف',
+    attach: 'إرفاق',
+    modelLoading: 'النموذج يُحمّل…',
+    modelReady: 'جاهز',
+    modelError: 'خطأ في المحرك',
+    tokensPerSecond: 'توكن/ث',
+    conversationDeleted: 'حُذفت المحادثة',
+    confirmDeleteChat: 'حذف هذه المحادثة؟',
+    confirmDeleteProject: 'حذف هذا المشروع؟',
+    fileTooBig: 'الملف كبير جداً',
+    filesAdded: 'أُضيف الملف',
+    language: 'English',
+    theme: 'المظهر',
+    engineDown: 'المحرّك لا يعمل — تحقق من السجل',
+    retry: 'إعادة المحاولة',
+    project: 'مشروع'
+  },
+  en: {
+    dir: 'ltr',
+    gateSub: 'A private chat workspace. Enter the password to continue.',
+    password: 'Password',
+    enter: 'Enter',
+    staySignedIn: 'Keep me signed in',
+    wrongPassword: 'Wrong password.',
+    tooMany: 'Too many attempts. Try again in 10 minutes.',
+    networkError: 'Could not reach the server.',
+    newChat: 'New chat',
+    chats: 'Chats',
+    projects: 'Projects',
+    signOut: 'Sign out',
+    modeChat: 'Chat',
+    modeCode: 'Code',
+    modeExplain: 'Explain',
+    modeDebug: 'Debug',
+    welcomeTitle: 'How can I help today?',
+    welcomeSub: 'LFM3-1.7B running locally — no external APIs',
+    welcomeSubLong: 'Chat, explain, code and analyse — all running locally on Liquid AI LFM3-1.7B.',
+    placeholder: 'Send a message…',
+    hint: 'Enter to send · Shift+Enter for a new line',
+    you: 'You',
+    assistant: 'Kosmos',
+    copy: 'Copy',
+    copied: 'Copied',
+    regenerate: 'Regenerate',
+    openArtifact: 'Open',
+    run: 'Run',
+    download: 'Download',
+    thinking: 'Thinking…',
+    stopped: 'Stopped',
+    emptyChats: 'No chats yet',
+    delete: 'Delete',
+    newProject: 'New project',
+    projectName: 'Project name',
+    instructions: 'Project instructions',
+    instructionsHint: 'Automatically added to every chat in this project',
+    knowledge: 'Knowledge files',
+    addDoc: 'Add text',
+    docName: 'File name',
+    docText: 'Paste the file contents here…',
+    save: 'Save',
+    cancel: 'Cancel',
+    noProjects: 'No projects yet',
+    projectSaved: 'Saved',
+    deleted: 'Deleted',
+    attach: 'Attach',
+    modelLoading: 'Model loading…',
+    modelReady: 'Ready',
+    modelError: 'Engine error',
+    tokensPerSecond: 'tok/s',
+    conversationDeleted: 'Chat deleted',
+    confirmDeleteChat: 'Delete this chat?',
+    confirmDeleteProject: 'Delete this project?',
+    fileTooBig: 'File is too large',
+    filesAdded: 'File added',
+    language: 'العربية',
+    theme: 'Theme',
+    engineDown: 'Engine is not running — check logs',
+    retry: 'Retry',
+    project: 'Project'
+  }
+};
 
-  const SUGGESTION_PROMPTS = {
-    ar: [
-      'اكتب دالة بايثون لقراءة ملف CSV وتحليل أعمدته باستخدام pandas',
-      'اكتب صفحة HTML وCSS لبطاقة تسجيل دخول عصرية مع تأثيرات حركة',
-      'اكتب مكوّن React لعدّاد بسيط يحفظ القيمة في localStorage',
-      'اشرح لي هذا الكود وابحث عن الأخطاء فيه:\n\nfunction sum(a){ return a.reduce((x,y)=>x+y) }',
-    ],
-    en: [
-      'Write a Python function that reads a CSV file and analyzes its columns with pandas',
-      'Write an HTML/CSS sign-in card with modern styling and animations',
-      'Write a React component for a simple counter that persists in localStorage',
-      'Explain this code and find the bugs:\n\nfunction sum(a){ return a.reduce((x,y)=>x+y) }',
-    ],
-  };
+const CHIPS = {
+  ar: [
+    { mode: 'chat', text: 'مرحبا! من أنت وماذا تستطيع أن تفعل؟' },
+    { mode: 'explain', text: 'اشرح لي كيف يعمل الذكاء الاصطناعي ببساطة' },
+    { mode: 'code', text: 'اكتب دالة بايثون للتحقق هل العدد زوجي' },
+    { mode: 'debug', text: 'لماذا يظهر لي Uncaught TypeError في JavaScript؟' }
+  ],
+  en: [
+    { mode: 'chat', text: 'Hi! Who are you and what can you do?' },
+    { mode: 'explain', text: 'Explain how large language models work, simply' },
+    { mode: 'code', text: 'Write a Python function that checks if a number is even' },
+    { mode: 'debug', text: 'Why do I get Uncaught TypeError in JavaScript?' }
+  ]
+};
 
-  let lang = 'ar';
-  try {
-    lang = localStorage.getItem('kosmos_lang') || 'ar';
-  } catch {}
-  const t = (k) => (I18N[lang] && I18N[lang][k]) || (I18N.en[k] || k);
+/* ─────────────────────────────────────────────────────────────────────── state */
+const state = {
+  lang: localStorage.getItem('kosmos.lang') || 'ar',
+  theme: localStorage.getItem('kosmos.theme') || 'dark',
+  mode: 'chat',
+  conversations: [],
+  projects: [],
+  currentId: null,
+  messages: [],
+  attachments: [],
+  streaming: false,
+  abort: null,
+  model: null,
+  artifact: null,
+  projectId: null
+};
 
-  function applyLang(next) {
-    lang = next;
-    try {
-      localStorage.setItem('kosmos_lang', lang);
-    } catch {}
-    document.documentElement.lang = lang;
-    document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
-    document.querySelectorAll('[data-i18n]').forEach((el) => {
-      const key = el.dataset.i18n;
-      if (I18N[lang][key]) el.textContent = I18N[lang][key];
-    });
-    document.querySelectorAll('[data-i18n-ph]').forEach((el) => {
-      el.placeholder = t(el.dataset.i18nPh);
-    });
-    document.querySelectorAll('.chip').forEach((chip, i) => {
-      chip.textContent = SUGGESTION_PROMPTS[lang][i];
-    });
-    $('#lang-label').textContent = lang === 'ar' ? 'English' : 'العربية';
-    updateEngineBadge();
+let t = I18N[state.lang];
+
+/* ───────────────────────────────────────────────────────────────────── helpers */
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function toast(msg, ms = 2200) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.hidden = false;
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { el.hidden = true; }, ms);
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(`/api${path}`, {
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json', ...(opts.headers || {}) },
+    ...opts
+  });
+  const text = await res.text();
+  let json = null;
+  try { json = text ? JSON.parse(text) : null; } catch { json = null; }
+  if (res.status === 401 && !path.startsWith('/login')) {
+    showGate();
+    throw new Error('unauthorized');
+  }
+  if (!res.ok) {
+    const err = new Error((json && (json.messageAr && state.lang === 'ar' ? json.messageAr : json.message)) || `HTTP ${res.status}`);
+    err.status = res.status;
+    err.body = json;
+    throw err;
+  }
+  return json;
+}
+
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+/* ─────────────────────────────────────────────────────────── markdown → html */
+const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ESC_MAP[c]);
+
+const KEYWORDS = {
+  js: 'const let var function return if else for while class new import from export default await async try catch throw typeof instanceof this null true false undefined of in switch case break continue super extends yield static get set delete void',
+  py: 'def return if elif else for while class import from as try except finally raise with lambda None True False and or not in is pass yield async await global nonlocal print self',
+  ts: 'interface type enum implements private public readonly namespace declare abstract as satisfies keyof infer never unknown any',
+  sh: 'if then else fi for do done while case esac function export local echo cd ls mkdir rm cp mv cat grep sed awk curl npm node sudo',
+  go: 'func package import var const type struct interface return if else for range go defer chan map make new switch case break continue nil true false err',
+  rust: 'fn let mut pub use struct enum impl trait match return if else for while loop in as const static mod crate self Self where dyn async await move ref',
+  sql: 'select from where insert into values update set delete join left right inner outer on group by order having limit offset as and or not null distinct create table index alter drop union',
+  css: 'color background display flex grid margin padding border font transition transform animation position top left right bottom width height',
+  html: 'html head body div span a p ul li table tr td th form input button script style link meta'
+};
+
+function highlight(code, lang) {
+  const esc2 = escapeHtml(code);
+  const l = (lang || '').toLowerCase();
+  const group = l === 'py' || l === 'python' ? 'py'
+    : l === 'js' || l === 'javascript' || l === 'ts' || l === 'typescript' || l === 'jsx' || l === 'tsx' ? (l.startsWith('t') ? 'ts' : 'js')
+    : l === 'sh' || l === 'bash' || l === 'shell' || l === 'zsh' ? 'sh'
+    : l === 'go' ? 'go' : l === 'rust' || l === 'rs' ? 'rust'
+    : l === 'sql' ? 'sql' : l === 'css' ? 'css' : l === 'html' || l === 'xml' ? 'html' : '';
+
+  if (!group) return esc2;
+
+  const words = (KEYWORDS[group] || '').split(' ').filter(Boolean);
+  let out = esc2;
+
+  if (group === 'html') {
+    out = out.replace(/(&lt;\/?)([a-zA-Z0-9-]+)/g, '$1<span class="tok-tag">$2</span>');
+    out = out.replace(/([a-zA-Z-]+)=(&quot;.*?&quot;)/g, '<span class="tok-attr">$1</span>=<span class="tok-str">$2</span>');
+    return out;
   }
 
-  // -------------------------------------------------------
-  // State
-  // -------------------------------------------------------
-  const state = {
-    authed: false,
-    model: { name: 'Qwen3-0.6B', quant: 'Q4_K_M', engine: 'llama.cpp', ctx: 4096 },
-    engine: { ready: false, loading: true, error: null },
-    conversations: [],
-    currentId: null,
-    mode: 'code',
-    token: '',
-    streaming: false,
-    abort: null,
-  };
+  // strings, then comments, then numbers, then keywords
+  out = out.replace(/(&quot;.*?&quot;|&#39;.*?&#39;|`[^`]*`)/g, '<span class="tok-str">$1</span>');
+  if (group === 'py') out = out.replace(/(#.*)$/gm, '<span class="tok-com">$1</span>');
+  else if (group === 'sql') out = out.replace(/(--.*)$/gm, '<span class="tok-com">$1</span>');
+  else if (group !== 'css') out = out.replace(/(\/\/.*)$/gm, '<span class="tok-com">$1</span>');
+  out = out.replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="tok-num">$1</span>');
+  if (words.length) {
+    const re = new RegExp(`\\b(${words.join('|')})\\b`, 'g');
+    out = out.replace(re, (m) => `<span class="tok-key">${m}</span>`);
+  }
+  return out;
+}
 
-  // -------------------------------------------------------
-  // Markdown + code rendering
-  // -------------------------------------------------------
-  const escapeHtml = (s) =>
-    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+function renderMarkdown(src) {
+  const text = String(src || '').replace(/\r\n/g, '\n');
+  const blocks = [];
+  const stash = (html) => `\u0000BLOCK${blocks.push(html) - 1}\u0000`;
 
-  const KEYWORDS = new Set(
-    ('def class return if elif else for while in not and or import from as with try except finally ' +
-      'lambda pass break continue yield global nonlocal assert del raise True False None print ' +
-      'function const let var new typeof instanceof this async await yield throw catch switch case default ' +
-      'do void int float double char bool string struct enum public private protected static final ' +
-      'include select from where join inner left right group by order having insert update delete create ' +
-      'table values into set null true false undefined export default extends implements interface type ' +
-      'package go func chan defer range map struct fn impl match pub use mod self echo typedef sizeof ' +
-      'elseif end then begin procedure declare').split(/\s+/)
-  );
-
-  function highlight(code, langName) {
-    const l = (langName || '').toLowerCase();
-    const hashComment = ['python', 'py', 'bash', 'sh', 'shell', 'yaml', 'yml', 'ruby', 'rb', 'toml', 'makefile', 'r'].includes(l);
-    const parts = [];
-    const re = new RegExp(
-      [
-        hashComment ? '#[^\\n]*' : null,
-        '\\/\\/[^\\n]*', '\\/\\*[\\s\\S]*?\\*\\/', '--[^\\n]*',
-        '`(?:\\\\.|[^`\\\\])*`', '"(?:\\\\.|[^"\\\\\\n])*"', "'(?:\\\\.|[^'\\\\\\n])*'",
-        '\\b\\d+(?:\\.\\d+)?\\b',
-        '[A-Za-z_$][\\w$]*(?=\\s*\\()',
-        '[A-Za-z_$][\\w$]*',
-      ]
-        .filter(Boolean)
-        .join('|'),
-      'g'
+  // fenced code first (also handles an unterminated fence while streaming)
+  let working = text.replace(/```([a-zA-Z0-9+#._-]*)\n?([\s\S]*?)(?:```|$)/g, (m, lang, code) => {
+    const lg = (lang || '').trim();
+    const body = code.replace(/\n$/, '');
+    const id = `c${uid()}`;
+    const label = lg || 'code';
+    return stash(
+      `<div class="code-card" data-code-id="${id}">` +
+        `<div class="code-head"><span>${esc(label)}</span><div class="code-tools">` +
+          `<button type="button" data-act="copy-code" data-target="${id}">${t.copy}</button>` +
+          `<button type="button" data-act="open-code" data-target="${id}" data-lang="${esc(lg)}">${t.openArtifact}</button>` +
+          `<button type="button" data-act="download-code" data-target="${id}" data-lang="${esc(lg)}">${t.download}</button>` +
+        `</div></div>` +
+        `<pre><code data-lang="${esc(lg)}">${highlight(body, lg)}</code></pre>` +
+        `<textarea hidden data-src="${id}">${escapeHtml(body)}</textarea>` +
+      `</div>`
     );
-    let last = 0;
-    let m;
-    while ((m = re.exec(code))) {
-      if (m.index > last) parts.push(escapeHtml(code.slice(last, m.index)));
-      const tok = m[0];
-      let cls = '';
-      if (/^(#|\/\/|\/\*|--)/.test(tok)) cls = 'tk-com';
-      else if (/^[`"']/.test(tok)) cls = 'tk-str';
-      else if (/^\d/.test(tok)) cls = 'tk-num';
-      else if (KEYWORDS.has(tok)) cls = 'tk-key';
-      else if (code.slice(m.index + tok.length).trimStart().startsWith('(')) cls = 'tk-fn';
-      parts.push(cls ? `<span class="${cls}">${escapeHtml(tok)}</span>` : escapeHtml(tok));
-      last = m.index + tok.length;
-    }
-    parts.push(escapeHtml(code.slice(last)));
-    return parts.join('');
+  });
+
+  working = escapeHtml(working);
+
+  // headings, hr, blockquote
+  working = working.replace(/^###### (.*)$/gm, '<h3>$1</h3>')
+    .replace(/^##### (.*)$/gm, '<h3>$1</h3>')
+    .replace(/^#### (.*)$/gm, '<h3>$1</h3>')
+    .replace(/^### (.*)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.*)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.*)$/gm, '<h1>$1</h1>')
+    .replace(/^(?:---|\*\*\*|___)\s*$/gm, '<hr>')
+    .replace(/^&gt; (.*)$/gm, '<blockquote>$1</blockquote>');
+
+  // inline
+  working = working
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[\s(])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+    .replace(/(^|[\s(])_([^_\n]+)_/g, '$1<em>$2</em>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+    .replace(/(^|\s)(https?:\/\/[^\s<]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
+
+  // tables
+  working = working.replace(/((?:^\|.*\|\s*$\n?){2,})/gm, (table) => {
+    const rows = table.trim().split('\n').filter((r) => r.trim());
+    if (rows.length < 2 || !/^\|[\s:|-]+\|$/.test(rows[1].trim())) return table;
+    const cells = (r) => r.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+    const head = cells(rows[0]);
+    const body = rows.slice(2).map(cells);
+    return '<table><thead><tr>' + head.map((h) => `<th>${h}</th>`).join('') + '</tr></thead><tbody>' +
+      body.map((r) => '<tr>' + r.map((c) => `<td>${c}</td>`).join('') + '</tr>').join('') +
+      '</tbody></table>';
+  });
+
+  // lists (simple, non-nested)
+  working = working.replace(/(?:^[ \t]*[-*+][ \t]+.*(?:\n|$))+/gm, (block) => {
+    const items = block.trim().split('\n').map((l) => l.replace(/^[ \t]*[-*+][ \t]+/, ''));
+    return '<ul>' + items.map((i) => `<li>${i}</li>`).join('') + '</ul>';
+  });
+  working = working.replace(/(?:^[ \t]*\d+\.[ \t]+.*(?:\n|$))+/gm, (block) => {
+    const items = block.trim().split('\n').map((l) => l.replace(/^[ \t]*\d+\.[ \t]+/, ''));
+    return '<ol>' + items.map((i) => `<li>${i}</li>`).join('') + '</ol>';
+  });
+
+  // paragraphs
+  const out = working.split(/\n{2,}/).map((chunk) => {
+    const c = chunk.trim();
+    if (!c) return '';
+    if (/^<(h\d|ul|ol|table|blockquote|hr|div|pre)/.test(c) || /^\u0000BLOCK\d+\u0000$/.test(c)) return c;
+    return `<p>${c.replace(/\n/g, '<br>')}</p>`;
+  }).join('\n');
+
+  return out.replace(/\u0000BLOCK(\d+)\u0000/g, (m, i) => blocks[Number(i)]);
+}
+
+/* ─────────────────────────────────────────────────────────────────────── theme */
+function applyTheme() {
+  document.documentElement.dataset.theme = state.theme;
+  localStorage.setItem('kosmos.theme', state.theme);
+}
+
+/* ──────────────────────────────────────────────────────────────────── language */
+function applyLang() {
+  t = I18N[state.lang];
+  document.documentElement.lang = state.lang;
+  document.documentElement.dir = t.dir;
+  localStorage.setItem('kosmos.lang', state.lang);
+
+  $$('[data-i18n]').forEach((el) => {
+    const key = el.dataset.i18n;
+    if (t[key]) el.textContent = t[key];
+  });
+  $$('[data-lang-toggle]').forEach((b) => { b.textContent = t.language; });
+  const input = $('#input');
+  if (input) input.placeholder = t.placeholder;
+  renderChips();
+  renderConversationList();
+  renderProjectsList();
+  if (state.messages.length) renderMessages();
+  else $('#messages').innerHTML = '';
+  updateWelcome();
+  updateModelBadge();
+}
+
+function updateWelcome() {
+  const has = state.messages.length > 0;
+  $('#welcome').hidden = has;
+  $('#messages').style.display = has ? 'grid' : 'none';
+}
+
+function renderChips() {
+  const box = $('#chips');
+  if (!box) return;
+  box.innerHTML = '';
+  for (const chip of CHIPS[state.lang]) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'chip';
+    btn.textContent = chip.text;
+    btn.addEventListener('click', () => {
+      setMode(chip.mode);
+      $('#input').value = chip.text;
+      autosize();
+      $('#input').focus();
+      send();
+    });
+    box.appendChild(btn);
   }
+}
 
-  // Strip Qwen3 reasoning blocks from the visible answer
-  const THINK_OPEN_PREFIXES = ['<think', '<thin', '<thi', '<th', '<t'];
-  function stripThinking(text) {
-    let out = String(text).replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '');
-    const open = out.search(/<think\b/i);
-    if (open >= 0) out = out.slice(0, open);
-    for (const p of THINK_OPEN_PREFIXES) {
-      if (out.endsWith(p) && out.length > p.length) {
-        out = out.slice(0, -p.length);
-        break;
-      }
-    }
-    return out.replace(/^\s+/, '');
-  }
+/* ──────────────────────────────────────────────────────────────────────── auth */
+function showGate() {
+  $('#app').hidden = true;
+  $('#gate').hidden = false;
+  document.body.dataset.screen = 'gate';
+  setTimeout(() => $('#password')?.focus(), 60);
+}
 
-  function renderMarkdown(raw) {
-    const blocks = [];
-    let text = String(raw || '').replace(/\r\n/g, '\n');
-    // Extract fenced code blocks
-    text = text.replace(/```([\w+#.-]*)\n?([\s\S]*?)```/g, (_, langName, code) => {
-      const idx = blocks.length;
-      blocks.push({ lang: (langName || '').trim(), code: code.replace(/\n$/, '') });
-      return `\u0000BLOCK${idx}\u0000`;
-    });
+function showApp() {
+  $('#gate').hidden = true;
+  $('#app').hidden = false;
+  document.body.dataset.screen = 'app';
+}
 
-    let html = escapeHtml(text);
-
-    // headings
-    html = html.replace(/^### (.*)$/gm, '<h3>$1</h3>');
-    html = html.replace(/^## (.*)$/gm, '<h2>$1</h2>');
-    html = html.replace(/^# (.*)$/gm, '<h2>$1</h2>');
-    // bold / italic / inline code
-    html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
-    html = html.replace(/`([^`\n]+)`/g, '<code class="inline">$1</code>');
-    // links
-    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-    // blockquote
-    html = html.replace(/^&gt;\s?(.*)$/gm, '<blockquote>$1</blockquote>');
-    // lists
-    html = html.replace(/(?:^|\n)((?:[-*+] .*(?:\n|$))+)/g, (m, group) => {
-      const items = group.trim().split('\n').map((l) => `<li>${l.replace(/^[-*+]\s+/, '')}</li>`).join('');
-      return `\n<ul>${items}</ul>`;
-    });
-    html = html.replace(/(?:^|\n)((?:\d+\. .*(?:\n|$))+)/g, (m, group) => {
-      const items = group.trim().split('\n').map((l) => `<li>${l.replace(/^\d+\.\s+/, '')}</li>`).join('');
-      return `\n<ol>${items}</ol>`;
-    });
-    // paragraphs
-    html = html
-      .split(/\n{2,}/)
-      .map((chunk) => {
-        const c = chunk.trim();
-        if (!c) return '';
-        if (/^<(h\d|ul|ol|blockquote|pre|table)/.test(c) || /^\u0000BLOCK\d+\u0000$/.test(c)) return c;
-        return `<p>${c.replace(/\n/g, '<br>')}</p>`;
-      })
-      .join('\n');
-
-    // Re-inject code blocks
-    html = html.replace(/\u0000BLOCK(\d+)\u0000/g, (_, n) => {
-      const b = blocks[Number(n)];
-      const runnable = /^(html|htm|css|js|javascript)$/i.test(b.lang) || /^</.test(b.code.trim().slice(0, 1)) && b.lang === '';
-      const id = `blk${Math.random().toString(36).slice(2, 8)}`;
-      return `
-<div class="code-block" data-lang="${escapeHtml(b.lang || 'text')}" data-code-id="${id}">
-  <div class="code-head">
-    <span class="lang">${escapeHtml(b.lang || 'code')}</span>
-    <div class="code-tools">
-      ${runnable ? `<button data-act="run">▶ ${t('run')}</button>` : ''}
-      <button data-act="copy">⧉ ${t('copy')}</button>
-      <button data-act="download">⤓ ${t('download')}</button>
-    </div>
-  </div>
-  <pre><code>${highlight(b.code, b.lang)}</code></pre>
-</div>`;
-    });
-    return html;
-  }
-
-  // Store raw code per rendered block for copy/run/download
-  const codeStore = new Map();
-
-  function hydrateCodeActions(container) {
-    container.querySelectorAll('.code-block').forEach((block, i) => {
-      if (block.dataset.hydrated) return;
-      block.dataset.hydrated = '1';
-      const codeEl = block.querySelector('code');
-      const raw = codeEl.textContent;
-      const langName = block.dataset.lang || 'text';
-      const key = `${i}_${langName}_${raw.length}`;
-      codeStore.set(key, { code: raw, lang: langName });
-      block.querySelectorAll('.code-tools button').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const act = btn.dataset.act;
-          if (act === 'copy') {
-            navigator.clipboard.writeText(raw).then(() => {
-              const original = btn.textContent;
-              btn.textContent = `✓ ${t('copied')}`;
-              setTimeout(() => (btn.textContent = original), 1500);
-            });
-          } else if (act === 'download') {
-            const ext = {
-              python: 'py', py: 'py', javascript: 'js', js: 'js', typescript: 'ts', ts: 'ts',
-              html: 'html', css: 'css', sql: 'sql', cpp: 'cpp', c: 'c', csharp: 'cs', cs: 'cs',
-              php: 'php', java: 'java', go: 'go', rust: 'rs', bash: 'sh', sh: 'sh', json: 'json', yaml: 'yml',
-            }[langName.toLowerCase()] || 'txt';
-            const blob = new Blob([raw], { type: 'text/plain;charset=utf-8' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = `kosmos-code.${ext}`;
-            a.click();
-            setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-          } else if (act === 'run') {
-            runCode(raw, langName);
-          }
-        });
-      });
-    });
-  }
-
-  function runCode(code, langName) {
-    const modal = $('#preview-modal');
-    const frame = $('#preview-frame');
-    const l = langName.toLowerCase();
-    let doc;
-    if (l === 'html' || l === 'htm') {
-      doc = code;
-    } else if (l === 'css') {
-      doc = `<!doctype html><html><head><style>${code}</style></head><body><h1>Heading</h1><p>Paragraph <a href="#">link</a></p><button>Button</button><div class="card">Card</div></body></html>`;
+async function checkAuth() {
+  try {
+    const me = await api('/me');
+    state.model = me.model;
+    showApp();
+    updateModelBadge();
+    await Promise.all([loadConversations(), loadProjects()]);
+    if (state.conversations.length) {
+      await openConversation(state.conversations[0].id);
     } else {
-      doc = `<!doctype html><html><head><meta charset="utf-8"><style>
-        body{font-family:ui-monospace,monospace;background:#0b1020;color:#d6e2ff;padding:14px;margin:0}
-        .ok{color:#2ee6a8}.err{color:#ff6b6b}.log{color:#8894b3;border-bottom:1px dashed #1e2942;padding:4px 0}
-      </style></head><body><div id="out"></div>
-      <script>
-        const out=document.getElementById('out');
-        function print(cls,args){const d=document.createElement('div');d.className='log '+cls;d.textContent=args.map(a=>{try{return typeof a==='object'?JSON.stringify(a):String(a)}catch(e){return String(a)}}).join(' ');out.appendChild(d);}
-        console.log=(...a)=>print('log',a);console.info=(...a)=>print('log',a);
-        console.warn=(...a)=>print('log',a);console.error=(...a)=>print('err',a);
-        window.onerror=(m)=>print('err',[m]);
-        try{\n${code}\n}catch(e){print('err',[e.message])}
-      <\/script></body></html>`;
+      newChat();
     }
-    frame.srcdoc = doc;
-    modal.classList.remove('hidden');
-  }
-
-  // -------------------------------------------------------
-  // Conversations
-  // -------------------------------------------------------
-  const STORE_KEY = 'kosmos_conversations_v1';
-
-  function loadConversations() {
-    try {
-      state.conversations = JSON.parse(localStorage.getItem(STORE_KEY) || '[]');
-    } catch {
-      state.conversations = [];
-    }
-    if (!Array.isArray(state.conversations)) state.conversations = [];
-  }
-
-  function saveConversations() {
-    try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(state.conversations.slice(-30)));
-    } catch {}
-  }
-
-  const currentConv = () => state.conversations.find((c) => c.id === state.currentId);
-
-  // Session token fallback (used when cookies are blocked inside preview iframes)
-  // The token lives in memory, in the URL hash (survives reloads even when
-  // storage & cookies are blocked inside a preview iframe) and in storage.
-  function tokenFromHash() {
-    const m = /(?:^#|&)t=([^&]+)/.exec(location.hash || '');
-    return m ? decodeURIComponent(m[1]) : '';
-  }
-  function getToken() {
-    if (state.token) return state.token;
-    const fromHash = tokenFromHash();
-    if (fromHash) {
-      state.token = fromHash;
-      return fromHash;
-    }
-    try {
-      return sessionStorage.getItem('kosmos_token') || localStorage.getItem('kosmos_token') || '';
-    } catch {
-      return '';
+  } catch (err) {
+    if (err.message !== 'unauthorized') {
+      console.warn(err);
+      showGate();
     }
   }
-  function setToken(tok) {
-    state.token = tok || '';
-    if (!tok) return;
-    try {
-      const url = location.pathname + location.search + '#t=' + encodeURIComponent(tok);
-      history.replaceState(null, '', url);
-    } catch {}
-    try {
-      localStorage.setItem('kosmos_token', tok);
-      sessionStorage.setItem('kosmos_token', tok);
-    } catch {}
-  }
-  function clearToken() {
-    state.token = '';
-    try {
-      if (/(?:^#|&)t=/.test(location.hash || '')) {
-        history.replaceState(null, '', location.pathname + location.search);
-      }
-    } catch {}
-    try {
-      localStorage.removeItem('kosmos_token');
-      sessionStorage.removeItem('kosmos_token');
-    } catch {}
-  }
-  function apiFetch(url, opts = {}) {
-    const tok = getToken();
-    opts.credentials = 'same-origin';
-    opts.headers = { ...(opts.headers || {}), 'Cache-Control': 'no-cache' };
-    if (tok) opts.headers.Authorization = `Bearer ${tok}`;
-    return fetch(url, opts);
-  }
+}
 
-  function renderHistory() {
-    historyList.innerHTML = '';
-    if (!state.conversations.length) {
-      const li = document.createElement('li');
-      li.className = 'history-empty';
-      li.textContent = t('noHistory');
-      historyList.appendChild(li);
-      return;
-    }
-    [...state.conversations].reverse().forEach((conv) => {
-      const li = document.createElement('li');
-      if (conv.id === state.currentId) li.classList.add('active');
-      const txt = document.createElement('span');
-      txt.className = 'txt';
-      txt.textContent = conv.title || t('newBadge');
-      const del = document.createElement('button');
-      del.className = 'del';
-      del.textContent = '✕';
-      del.addEventListener('click', (e) => {
-        e.stopPropagation();
-        state.conversations = state.conversations.filter((c) => c.id !== conv.id);
-        if (state.currentId === conv.id) newChat();
-        saveConversations();
-        renderHistory();
-      });
-      li.appendChild(txt);
-      li.appendChild(del);
-      li.addEventListener('click', () => openConversation(conv.id));
-      historyList.appendChild(li);
+/* ────────────────────────────────────────────────────────────────── model UI */
+function updateModelBadge() {
+  const m = state.model;
+  const pulse = $('#modelPulse');
+  const name = $('#modelName');
+  const meta = $('#modelMeta');
+  if (!m) return;
+  name.textContent = m.name || 'LFM3-1.7B';
+  const bits = [m.quant, `${m.context ? Math.round(m.context / 1024) + 'K' : ''} ctx`].filter(Boolean);
+  meta.textContent = bits.join(' · ') || 'llama.cpp';
+  pulse.className = 'pulse ' + (m.ready ? 'ready' : m.state === 'error' ? 'error' : 'loading');
+  $('#modelBadge').title = m.ready
+    ? `llama.cpp · ${m.context} ctx · ${m.loadSeconds}s load`
+    : m.error || t.modelLoading;
+  $('#gateModel').textContent = m.name || 'LFM3-1.7B';
+}
+
+async function pollModel() {
+  try {
+    const health = await api('/health');
+    state.model = health.model;
+    updateModelBadge();
+    if (!health.model.ready && health.model.state !== 'error') setTimeout(pollModel, 2500);
+  } catch { /* ignore */ }
+}
+
+/* ───────────────────────────────────────────────────────── conversations list */
+async function loadConversations() {
+  const res = await api('/conversations');
+  state.conversations = res.items || [];
+  renderConversationList();
+}
+
+function renderConversationList() {
+  const box = $('#convList');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!state.conversations.length) {
+    box.innerHTML = `<div class="sidebar-empty">${t.emptyChats}</div>`;
+    return;
+  }
+  for (const conv of state.conversations) {
+    const row = document.createElement('div');
+    row.className = 'conv-item' + (conv.id === state.currentId ? ' is-active' : '');
+    row.dataset.id = conv.id;
+    row.innerHTML = `<span class="title">${esc(conv.title || 'New chat')}</span>` +
+      `<button class="kill" type="button" data-act="delete-conv" data-id="${conv.id}" title="${t.delete}">✕</button>`;
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('[data-act="delete-conv"]')) return;
+      openConversation(conv.id);
+      $('#sidebar').classList.remove('is-open');
     });
+    box.appendChild(row);
   }
+}
 
-  function newChat() {
-    state.currentId = null;
-    rememberCurrent(null);
-    messagesEl.innerHTML = '';
-    showEmptyState();
-    renderHistory();
-    inputEl.value = '';
-    autoGrow();
-    updateSendState();
-    inputEl.focus();
-  }
-
-  function showEmptyState() {
-    if (messagesEl.querySelector('.msg')) {
-      messagesEl.querySelectorAll('.empty').forEach((e) => e.remove());
-      return;
+async function openConversation(cid) {
+  if (state.streaming) return;
+  try {
+    const conv = await api(`/conversations/${cid}`);
+    state.currentId = conv.id;
+    state.messages = conv.messages || [];
+    state.mode = conv.mode || 'chat';
+    state.projectId = conv.projectId || null;
+    setMode(state.mode, { silent: true });
+    $('#chatTitle').textContent = conv.title;
+    renderMessages();
+    updateWelcome();
+    renderConversationList();
+    scrollToBottom(true);
+  } catch (err) {
+    if (err.status === 404) {
+      await loadConversations();
+      newChat();
     }
-    messagesEl.innerHTML = '';
-    const wrap = document.createElement('div');
-    wrap.className = 'empty';
-    wrap.id = 'empty-state';
-    wrap.innerHTML = `
-      <div class="empty-icon">⚡</div>
-      <h2>${t('emptyTitle')}</h2>
-      <p>${t('emptyText')}</p>
-      <div class="suggestions">
-        ${SUGGESTION_PROMPTS[lang].map((p) => `<button class="chip"></button>`).join('')}
-      </div>`;
-    wrap.querySelectorAll('.chip').forEach((chip, i) => {
-      chip.textContent = SUGGESTION_PROMPTS[lang][i];
-      chip.addEventListener('click', () => {
-        inputEl.value = SUGGESTION_PROMPTS[lang][i];
-        autoGrow();
-        updateSendState();
-        inputEl.focus();
-      });
-    });
-    messagesEl.appendChild(wrap);
   }
+}
 
-  function rememberCurrent(id) {
-    try {
-      if (id) localStorage.setItem('kosmos_current', id);
-      else localStorage.removeItem('kosmos_current');
-    } catch {}
+function newChat() {
+  // Starting a new chat mid-stream stops the stream instead of silently
+  // ignoring the click — the partial answer is already saved server-side.
+  if (state.streaming) {
+    state.abort?.abort();
+    state.streaming = false;
+    setSendState('send');
   }
+  state.currentId = null;
+  state.messages = [];
+  state.attachments = [];
+  state.projectId = null;
+  state.mode = 'chat';
+  setMode('chat', { silent: true });
+  $('#chatTitle').textContent = 'Kosmos AI';
+  $('#chatSub').textContent = t.welcomeSub;
+  $('#messages').innerHTML = '';
+  renderAttachments();
+  updateWelcome();
+  renderConversationList();
+  $('#input').focus();
+}
 
-  function openConversation(id) {
-    const conv = state.conversations.find((c) => c.id === id);
-    if (!conv) return;
-    state.currentId = id;
-    rememberCurrent(id);
-    messagesEl.innerHTML = '';
-    conv.messages.forEach((m) => appendMessage(m.role, m.content));
-    renderHistory();
-    scrollToBottom();
-    closeSidebarOnMobile();
+async function deleteConversation(cid) {
+  if (!confirm(t.confirmDeleteChat)) return;
+  await api(`/conversations/${cid}`, { method: 'DELETE' });
+  state.conversations = state.conversations.filter((c) => c.id !== cid);
+  renderConversationList();
+  toast(t.conversationDeleted);
+  if (state.currentId === cid) {
+    if (state.conversations.length) await openConversation(state.conversations[0].id);
+    else newChat();
   }
+}
 
-  function appendMessage(role, content, opts = {}) {
-    messagesEl.querySelectorAll('.empty').forEach((e) => e.remove());
-    const wrap = document.createElement('div');
-    wrap.className = `msg ${role}`;
-    const avatar = document.createElement('div');
-    avatar.className = 'avatar';
-    avatar.textContent = role === 'user' ? '👤' : '⚡';
+/* ────────────────────────────────────────────────────────────── message view */
+function messageNode(msg, index) {
+  const wrap = document.createElement('div');
+  wrap.className = `msg ${msg.role === 'user' ? 'user' : 'assistant'}`;
+  wrap.dataset.index = index;
+
+  if (msg.role === 'user') {
+    const role = document.createElement('div');
+    role.className = 'msg-role';
+    role.innerHTML = `<span class="avatar">${esc((t.you || 'U')[0])}</span><span>${t.you}</span>`;
     const bubble = document.createElement('div');
-    bubble.className = 'bubble';
-    const head = document.createElement('div');
-    head.className = 'msg-head';
-    head.innerHTML = `<b>${role === 'user' ? t('you') : t('assistant')}</b><span>${
-      role === 'assistant' ? `${state.model.name} · ${state.model.quant}` : new Date().toLocaleTimeString(lang === 'ar' ? 'ar-DZ' : 'en-GB', { hour: '2-digit', minute: '2-digit' })
-    }</span>`;
-    const body = document.createElement('div');
-    body.className = 'md';
-    if (role === 'user') {
-      body.style.whiteSpace = 'pre-wrap';
-      body.textContent = content;
-    } else {
-      body.innerHTML = content ? renderMarkdown(content) : '';
-      hydrateCodeActions(body);
+    bubble.className = 'user-bubble';
+    bubble.textContent = msg.content;
+    if (msg.attachments?.length) {
+      const names = document.createElement('div');
+      names.className = 'mono';
+      names.style.marginTop = '6px';
+      names.textContent = msg.attachments.map((a) => `📎 ${a.name}`).join(' · ');
+      bubble.appendChild(names);
     }
-    bubble.appendChild(head);
-    bubble.appendChild(body);
-    wrap.appendChild(avatar);
-    wrap.appendChild(bubble);
-    messagesEl.appendChild(wrap);
+    wrap.append(role, bubble);
+    return wrap;
+  }
+
+  const role = document.createElement('div');
+  role.className = 'msg-role';
+  role.innerHTML = `<span class="avatar">K</span><span>${esc(msg.model || state.model?.name || t.assistant)}</span>`;
+
+  const body = document.createElement('div');
+  body.className = 'assistant-body';
+  body.innerHTML = renderMarkdown(msg.content || '');
+
+  wrap.append(role);
+
+  if (msg.reasoning) {
+    const det = document.createElement('details');
+    det.className = 'reasoning';
+    det.innerHTML = `<summary>${t.thinking}</summary><div class="reasoning-body">${escapeHtml(msg.reasoning)}</div>`;
+    wrap.appendChild(det);
+  }
+  wrap.appendChild(body);
+
+  const actions = document.createElement('div');
+  actions.className = 'msg-actions';
+  actions.innerHTML =
+    `<button type="button" data-act="copy-msg" data-index="${index}">${t.copy}</button>` +
+    (index === state.messages.length - 1 ? `<button type="button" data-act="regen" data-index="${index}">${t.regenerate}</button>` : '');
+  wrap.appendChild(actions);
+
+  if (msg.stats?.seconds) {
+    const stat = document.createElement('div');
+    stat.className = 'msg-stat mono';
+    const parts = [`${msg.stats.seconds}s`];
+    if (msg.stats.tokensPerSecond) parts.push(`${msg.stats.tokensPerSecond} ${t.tokensPerSecond}`);
+    if (msg.aborted) parts.push(t.stopped);
+    stat.textContent = parts.join(' · ');
+    wrap.appendChild(stat);
+  }
+  return wrap;
+}
+
+function renderMessages() {
+  const box = $('#messages');
+  box.innerHTML = '';
+  state.messages.forEach((m, i) => box.appendChild(messageNode(m, i)));
+}
+
+function scrollToBottom(instant) {
+  const el = $('#chatScroll');
+  if (!el) return;
+  if (instant) el.style.scrollBehavior = 'auto';
+  el.scrollTop = el.scrollHeight;
+  if (instant) requestAnimationFrame(() => { el.style.scrollBehavior = ''; });
+}
+
+/* ──────────────────────────────────────────────────────────────────── modes */
+function setMode(mode, { silent = false } = {}) {
+  state.mode = mode;
+  $$('.mode-btn').forEach((b) => b.classList.toggle('is-active', b.dataset.mode === mode));
+  if (!silent) {
+    const subs = {
+      chat: { ar: 'نموذج LFM3-1.7B محلي — بلا واجهات خارجية', en: 'LFM3-1.7B running locally — no external APIs' },
+      code: { ar: 'وضع توليد الكود — اكتب ما تريد بناءه', en: 'Code mode — describe what to build' },
+      explain: { ar: 'وضع الشرح — مفاهيم بأسلوب مبسّط', en: 'Explain mode — concepts, made simple' },
+      debug: { ar: 'وضع التصحيح — ألصق الخطأ أو الكود', en: 'Debug mode — paste the error or code' }
+    };
+    $('#chatSub').textContent = (subs[mode] || subs.chat)[state.lang];
+  }
+  if (state.currentId) {
+    api(`/conversations/${state.currentId}`, { method: 'PATCH', body: JSON.stringify({ mode }) }).catch(() => {});
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────── attachments */
+const MAX_FILE = 12 * 1024 * 1024;
+const TEXT_EXT = /\.(txt|md|markdown|js|mjs|cjs|ts|tsx|jsx|json|css|scss|html|htm|xml|svg|py|rb|php|java|c|h|cpp|hpp|cs|go|rs|swift|kt|sh|bash|zsh|sql|yml|yaml|toml|ini|cfg|env|log|csv|tex)$/i;
+
+async function handleFiles(files) {
+  for (const file of files) {
+    logActivity('file', file.name);
+    if (file.size > MAX_FILE) { toast(`${t.fileTooBig}: ${file.name}`); continue; }
+    const isImage = /^image\/(png|jpe?g|webp|gif)$/i.test(file.type);
+    const isPdf = /pdf$/i.test(file.type) || /\.pdf$/i.test(file.name);
+    if (isImage) {
+      const dataUrl = await new Promise((res) => {
+        const fr = new FileReader();
+        fr.onload = () => res(fr.result);
+        fr.readAsDataURL(file);
+      });
+      state.attachments.push({ name: file.name, kind: 'image', size: file.size, dataUrl });
+    } else if (isPdf) {
+      // no PDF parser offline: tell the user honestly instead of pretending
+      toast(state.lang === 'ar' ? 'ملفات PDF غير مدعومة بعد — ألصق النص' : 'PDF not supported yet — paste the text');
+      continue;
+    } else if (TEXT_EXT.test(file.name) || (file.type || '').startsWith('text/')) {
+      const text = await file.text();
+      state.attachments.push({ name: file.name, kind: 'text', size: file.size, text: text.slice(0, 60000) });
+    } else {
+      toast(state.lang === 'ar' ? 'نوع ملف غير مدعوم' : 'Unsupported file type');
+      continue;
+    }
+  }
+  renderAttachments();
+}
+
+function renderAttachments() {
+  const bar = $('#attachmentBar');
+  bar.innerHTML = '';
+  if (!state.attachments.length) { bar.hidden = true; return; }
+  bar.hidden = false;
+  state.attachments.forEach((a, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'attach-chip';
+    chip.innerHTML = `<span>${a.kind === 'image' ? '🖼️' : '📄'}</span><span class="name">${esc(a.name)}</span>` +
+      `<button type="button" data-i="${i}" aria-label="remove">✕</button>`;
+    chip.querySelector('button').addEventListener('click', () => {
+      state.attachments.splice(i, 1);
+      renderAttachments();
+    });
+    bar.appendChild(chip);
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────────── sending */
+async function ensureConversation() {
+  if (state.currentId) return state.currentId;
+  const conv = await api('/conversations', {
+    method: 'POST',
+    body: JSON.stringify({ mode: state.mode, projectId: state.projectId })
+  });
+  state.currentId = conv.id;
+  state.conversations.unshift({ id: conv.id, title: conv.title, mode: conv.mode, updatedAt: conv.updatedAt, messageCount: 0 });
+  renderConversationList();
+  return conv.id;
+}
+
+function appendAssistantPlaceholder() {
+  const box = $('#messages');
+  const wrap = document.createElement('div');
+  wrap.className = 'msg assistant';
+  wrap.id = 'streaming-msg';
+  wrap.innerHTML =
+    `<div class="msg-role"><span class="avatar">K</span><span>${esc(state.model?.name || 'Kosmos')}</span></div>` +
+    `<div class="assistant-body" id="streamBody"><div class="typing"><span></span><span></span><span></span></div></div>`;
+  box.appendChild(wrap);
+  updateWelcome();
+  scrollToBottom();
+  return { wrap, body: $('#streamBody') };
+}
+
+async function send(presetText) {
+  if (state.streaming) return;
+  const input = $('#input');
+  const text = (presetText ?? input.value).trim();
+  if (!text && !state.attachments.length) return;
+
+  input.value = '';
+  autosize();
+
+  const atts = state.attachments.slice();
+  state.attachments = [];
+  renderAttachments();
+
+  rememberPrompt(text, state.mode);
+
+  try {
+    const cid = await ensureConversation();
+
+    // optimistic user bubble
+    state.messages.push({ id: uid(), role: 'user', content: text, attachments: atts.map((a) => ({ name: a.name, kind: a.kind, size: a.size })) });
+    renderMessages();
     scrollToBottom();
 
-    if (opts.store === true && state.currentId) {
-      const conv = currentConv();
-      if (conv) {
-        conv.messages.push({ role, content });
-        saveConversations();
-      }
-    }
-    return { wrap, body };
-  }
+    const { body } = appendAssistantPlaceholder();
 
-  function scrollToBottom() {
-    requestAnimationFrame(() => {
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-    });
-  }
-
-  // -------------------------------------------------------
-  // Chat streaming
-  // -------------------------------------------------------
-  function updateSendState() {
-    if (state.streaming) {
-      sendBtn.disabled = false;
-      sendBtn.classList.add('stop');
-      sendBtn.innerHTML = `<span>${t('stopGen')}</span> <b>■</b>`;
-      return;
-    }
-    sendBtn.classList.remove('stop');
-    sendBtn.innerHTML = `<span>${t('send')}</span> <b>➤</b>`;
-    sendBtn.disabled = !inputEl.value.trim() || !state.engine.ready;
-  }
-
-  function buildUserContent(text) {
-    const codeLang = $('#code-lang').value;
-    if (codeLang && codeLang !== 'auto' && state.mode !== 'explain' && state.mode !== 'debug') {
-      return `[Target language: ${codeLang}]\n${text}`;
-    }
-    return text;
-  }
-
-  async function sendMessage() {
-    if (state.streaming) {
-      if (state.abort) state.abort.abort();
-      return;
-    }
-    const text = inputEl.value.trim();
-    if (!text) return;
-    if (!state.engine.ready) {
-      appendMessage('assistant', t('modelLoading'));
-      return;
-    }
-
-    if (!state.currentId) {
-      const id = `c_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      state.conversations.push({ id, title: text.slice(0, 60), messages: [], ts: Date.now() });
-      state.currentId = id;
-      rememberCurrent(id);
-    }
-    const conv = currentConv();
-    if (conv) {
-      conv.messages.push({ role: 'user', content: text });
-      saveConversations();
-    }
-    const payloadMessages = conv ? [...conv.messages] : [{ role: 'user', content: text }];
-
-    appendMessage('user', text, { store: false });
-    inputEl.value = '';
-    autoGrow();
     state.streaming = true;
-    updateSendState();
-
-    const { body } = appendMessage('assistant', '');
-    body.innerHTML = '<div class="thinking"><i></i><i></i><i></i></div>';
-    const headMsg = body.closest('.bubble').querySelector('.msg-head span');
-
+    setSendState('stop');
     const controller = new AbortController();
     state.abort = controller;
-    let full = '';
-    let pending = false;
-    let sessionExpired = false;
 
+    let acc = '';
+    let reasoning = '';
+    let rafPending = false;
     const paint = () => {
-      pending = false;
-      body.innerHTML = renderMarkdown(stripThinking(full)) + '<span class="cursor"></span>';
-      hydrateCodeActions(body);
-      if (full.length > 40) scrollToBottom();
+      rafPending = false;
+      body.innerHTML = renderMarkdown(stableTail(acc)) + '<span class="caret"></span>';
+      scrollToBottom();
     };
 
-    try {
-      const res = await apiFetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: payloadMessages,
-          mode: state.mode,
-          lang,
-          maxTokens: 700,
-          temperature: 0.55,
-        }),
-        signal: controller.signal,
-      });
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
+      signal: controller.signal,
+      body: JSON.stringify({
+        conversationId: cid,
+        message: text,
+        mode: state.mode,
+        lang: state.lang,
+        thinking: false,
+        attachments: atts,
+        maxTokens: 1200
+      })
+    });
 
-      if (res.status === 401) {
-        // Session expired: keep the typed message so nothing is lost
-        inputEl.value = inputEl.value || text;
-        autoGrow();
-        updateSendState();
-        state.authed = false;
-        showGate();
-        loginError.textContent =
-          lang === 'ar' ? 'انتهت الجلسة — أدخل كلمة السر للمتابعة' : 'Session expired — enter your password to continue';
-        return;
-      }
-      if (!res.ok || !res.body) {
-        let errInfo = {};
-        try {
-          errInfo = await res.json();
-        } catch {}
-        body.innerHTML = `<p style="color:var(--warn)">${escapeHtml(
-          errInfo.message || (errInfo.error === 'model_loading' ? t('modelLoading') : t('errorGeneric'))
-        )}</p>`;
-        return;
-      }
+    if (!res.ok) {
+      let err = {};
+      try { err = await res.json(); } catch { /* ignore */ }
+      throw new Error((state.lang === 'ar' && err.messageAr) || err.message || `HTTP ${res.status}`);
+    }
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let idx;
-        while ((idx = buffer.indexOf('\n\n')) >= 0) {
-          const chunk = buffer.slice(0, idx);
-          buffer = buffer.slice(idx + 2);
-          for (const line of chunk.split('\n')) {
-            if (!line.startsWith('data:')) continue;
-            let evt;
-            try {
-              evt = JSON.parse(line.slice(5).trim());
-            } catch {
-              continue;
-            }
-            if (evt.delta) {
-              full += evt.delta;
-              if (!pending) {
-                pending = true;
-                requestAnimationFrame(paint);
-              }
-            } else if (evt.done) {
-              if (evt.stats) {
-                const s = evt.stats;
-                headMsg.textContent = `${(s.tokens || 0)} tok · ${s.tokPerSec || '—'} tok/s · ${s.elapsed.toFixed(1)}s`;
-                statsBadge.textContent = `${s.tokPerSec || '—'} tok/s`;
-              }
-            } else if (evt.error) {
-              if (evt.error === 'unauthorized') {
-                sessionExpired = true;
-                continue;
-              }
-              full += full ? `\n\n> ⚠ ${evt.message}` : `⚠ ${evt.message}`;
-            }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buffer.indexOf('\n\n')) !== -1) {
+        const frame = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        let event = 'message';
+        let data = '';
+        for (const line of frame.split('\n')) {
+          if (line.startsWith('event:')) event = line.slice(6).trim();
+          else if (line.startsWith('data:')) data += line.slice(5).trim();
+        }
+        if (!data) continue;
+        let payload;
+        try { payload = JSON.parse(data); } catch { continue; }
+
+        if (event === 'delta') {
+          acc += payload.text;
+          if (!rafPending) { rafPending = true; requestAnimationFrame(paint); }
+        } else if (event === 'reasoning') {
+          reasoning += payload.text;
+        } else if (event === 'error') {
+          throw new Error(payload.message || 'stream error');
+        } else if (event === 'done') {
+          acc = payload.content ?? acc;
+          if (rafPending) { rafPending = false; }
+          body.innerHTML = renderMarkdown(acc);
+          scrollToBottom();
+          reasoning = payload.reasoning ?? reasoning;
+          if (payload.title) {
+            $('#chatTitle').textContent = payload.title;
+            const row = state.conversations.find((c) => c.id === cid);
+            if (row) row.title = payload.title;
+            renderConversationList();
           }
         }
       }
-    } catch (e) {
-      if (e.name !== 'AbortError') {
-        full += full ? `\n\n> ⚠ ${t('errorGeneric')}` : `⚠ ${t('errorGeneric')}`;
-      }
-    } finally {
-      state.streaming = false;
-      state.abort = null;
-      const clean = stripThinking(full);
-      body.innerHTML = clean ? renderMarkdown(clean) : `<p class="muted">${t('errorGeneric')}</p>`;
-      hydrateCodeActions(body);
-      if (stripThinking(full)) {
-        const c = currentConv();
-        if (c) {
-          c.messages.push({ role: 'assistant', content: stripThinking(full) });
-          saveConversations();
-        }
-        renderHistory();
-      }
-      updateSendState();
-      scrollToBottom();
-      if (sessionExpired) {
-        inputEl.value = text;
-        autoGrow();
-        state.authed = false;
-        showGate();
-        loginError.textContent =
-          lang === 'ar' ? 'انتهت الجلسة — أدخل كلمة السر للمتابعة' : 'Session expired — enter your password to continue';
-        updateSendState();
-      }
     }
-  }
 
-  // -------------------------------------------------------
-  // Engine status polling
-  // -------------------------------------------------------
-  function updateEngineBadge() {
-    const ready = state.engine.ready;
-    engineBadgeState.textContent = ready ? t('readyShort') : state.engine.error ? t('noModel') : t('loadingShort');
-    modelStatusDot.className = `dot ${ready ? 'ok' : state.engine.error ? 'err' : ''}`;
-    modelStatusText.textContent = ready ? t('ready') : state.engine.error ? state.engine.error.slice(0, 40) : t('loading');
-    $('#engine-badge-model').textContent = state.model.name;
-    updateSendState();
-  }
-
-  async function pollStatus() {
-    try {
-      const res = await apiFetch('/api/me');
-      const data = await res.json();
-      state.authed = data.authed;
-      if (data.model) state.model = { ...state.model, ...data.model };
-      if (data.engine) state.engine = data.engine;
-      $('#m-name').textContent = state.model.name;
-      $('#m-quant').textContent = state.model.quant;
-      $('#m-ctx').textContent = state.model.ctx;
-      $('#gate-model').textContent = `${state.model.name} · ${state.model.quant}`;
-      updateEngineBadge();
-      if (!state.engine.ready && !state.engine.error) setTimeout(pollStatus, 2500);
-    } catch {
-      setTimeout(pollStatus, 5000);
+    $('#streaming-msg')?.remove();
+    state.messages.push({ role: 'assistant', content: acc, reasoning: reasoning || undefined, stats: { seconds: 0 } });
+    renderMessages();
+    updateWelcome();
+    scrollToBottom();
+    await loadConversations();
+    state.currentId = cid;
+    renderConversationList();
+  } catch (err) {
+    $('#streaming-msg')?.remove();
+    if (err.name === 'AbortError') {
+      // keep whatever streamed in
+      renderMessages();
+      toast(t.stopped);
+    } else {
+      const box = $('#messages');
+      const note = document.createElement('div');
+      note.className = 'err-note';
+      note.textContent = err.message;
+      box.appendChild(note);
+      if (/unavailable|loading|غير جاهز/i.test(err.message)) setTimeout(pollModel, 1200);
     }
+  } finally {
+    state.streaming = false;
+    state.abort = null;
+    setSendState('send');
+    updateWelcome();
   }
+}
 
-  // -------------------------------------------------------
-  // Auth
-  // -------------------------------------------------------
-  function showGate() {
-    gate.classList.remove('hidden');
-    app.classList.add('hidden');
-    setTimeout(() => passwordInput.focus(), 120);
+/**
+ * Hide a tail that might be the start of a chat-template marker while tokens
+ * are still arriving ("<|im_en" → "d|>"). The server does the same; doing it
+ * here too keeps the visible text identical to the saved message.
+ */
+function stableTail(raw) {
+  const s = String(raw || '');
+  const open = s.lastIndexOf('<');
+  if (open === -1) return s;
+  const tail = s.slice(open);
+  if (/^<\|?[A-Za-z_]*$/.test(tail) && tail.length < 16) return s.slice(0, open);
+  return s;
+}
+
+function setSendState(kind) {
+  const btn = $('#sendBtn');
+  if (kind === 'stop') {
+    btn.disabled = false;
+    btn.classList.add('is-stop');
+    btn.innerHTML = '■';
+    btn.type = 'button';
+  } else {
+    btn.disabled = !$('#input').value.trim() && !state.attachments.length;
+    btn.classList.remove('is-stop');
+    btn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h13M12 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    btn.type = 'submit';
   }
+}
 
-  function showApp() {
-    gate.classList.add('hidden');
-    app.classList.remove('hidden');
-    loadConversations();
-    renderHistory();
-    let restored = null;
-    try {
-      restored = localStorage.getItem('kosmos_current');
-    } catch {}
-    if (restored && state.conversations.some((c) => c.id === restored)) openConversation(restored);
-    else newChat();
-    pollStatus();
+/* ───────────────────────────────────────────────────────────────── projects */
+async function loadProjects() {
+  try {
+    const res = await api('/projects');
+    state.projects = res.items || [];
+    renderProjectsList();
+  } catch { /* ignore */ }
+}
+
+function renderProjectsList() {
+  const box = $('#projectList');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!state.projects.length) {
+    box.innerHTML = `<div class="sidebar-empty">${t.noProjects}</div>`;
+    return;
   }
+  for (const p of state.projects) {
+    const row = document.createElement('div');
+    row.className = 'conv-item';
+    row.innerHTML = `<span class="title">🗂 ${esc(p.name)}</span><span class="mono">${p.docCount || 0}</span>`;
+    row.addEventListener('click', () => openProjectModal(p.id));
+    box.appendChild(row);
+  }
+}
 
-  loginForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    loginError.textContent = '';
-    loginBtn.disabled = true;
-    try {
-      const res = await apiFetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: passwordInput.value }),
+function openProjectModal(pid) {
+  const project = state.projects.find((p) => p.id === pid) || null;
+  const modal = $('#projectModal');
+  const body = $('#projectBody');
+  modal.hidden = false;
+
+  body.innerHTML = '';
+  const nameRow = document.createElement('div');
+  nameRow.className = 'field-row';
+  nameRow.innerHTML = `<label>${t.projectName}</label><input id="pName" value="${esc(project?.name || '')}" />`;
+
+  const instrRow = document.createElement('div');
+  instrRow.className = 'field-row';
+  instrRow.innerHTML = `<label>${t.instructions} <span class="mono">(${t.instructionsHint})</span></label>` +
+    `<textarea id="pInstr" rows="3"></textarea>`;
+
+  const actions = document.createElement('div');
+  actions.style.display = 'flex';
+  actions.style.gap = '8px';
+  actions.innerHTML = `<button class="btn-ghost" id="pSave">${t.save}</button>` +
+    (project ? `<button class="btn-ghost btn-danger" id="pDelete">${t.delete}</button>` : '') +
+    `<button class="btn-ghost" id="pClose">${t.cancel}</button>`;
+
+  const knowledge = document.createElement('div');
+  knowledge.className = 'field-row';
+  knowledge.innerHTML = `<label>${t.knowledge}</label>`;
+
+  const docList = document.createElement('div');
+  docList.style.display = 'grid';
+  docList.style.gap = '6px';
+
+  const docForm = document.createElement('div');
+  docForm.innerHTML =
+    `<div class="field-row"><input id="dName" placeholder="${t.docName}" /></div>` +
+    `<div class="field-row"><textarea id="dText" rows="4" placeholder="${t.docText}"></textarea></div>` +
+    `<button class="btn-ghost" id="dAdd">${t.addDoc}</button>`;
+
+  body.append(nameRow, instrRow, actions, knowledge, docList, docForm);
+
+  const renderDocs = (docs) => {
+    docList.innerHTML = '';
+    if (!docs?.length) { docList.innerHTML = `<div class="mono">—</div>`; return; }
+    for (const d of docs) {
+      const row = document.createElement('div');
+      row.className = 'doc-item';
+      row.innerHTML = `<span class="doc-name">📄 ${esc(d.name)}</span><span class="mono">${d.size} B</span>`;
+      const del = document.createElement('button');
+      del.className = 'link-btn';
+      del.textContent = '✕';
+      del.addEventListener('click', async () => {
+        await api(`/projects/${pid}/docs/${d.id}`, { method: 'DELETE' });
+        await loadProjects();
+        const fresh = await api(`/projects/${pid}`);
+        renderDocs(fresh.docs);
       });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.ok) {
-        setToken(data.token || '');
-        passwordInput.value = '';
-        showApp();
-      } else if (res.status === 429) {
-        loginError.textContent = lang === 'ar' ? 'محاولات كثيرة، حاول بعد قليل.' : 'Too many attempts, try later.';
-      } else {
-        loginError.textContent = lang === 'ar' ? 'كلمة السر غير صحيحة' : 'Wrong password';
-        passwordInput.select();
-      }
-    } catch {
-      loginError.textContent = t('errorGeneric');
-    } finally {
-      loginBtn.disabled = false;
+      row.appendChild(del);
+      docList.appendChild(row);
+    }
+  };
+
+  const readDocs = async () => {
+    if (project) {
+      const fresh = await api(`/projects/${pid}`);
+      renderDocs(fresh.docs);
+    } else {
+      renderDocs([]);
+    }
+  };
+
+  if (project) api(`/projects/${pid}`).then((p) => { $('#pInstr').value = p.instructions || ''; }).catch(() => {});
+  readDocs();
+
+  $('#pClose').addEventListener('click', () => { modal.hidden = true; });
+
+  $('#pSave').addEventListener('click', async () => {
+    const payload = { name: $('#pName').value.trim() || 'Project', instructions: $('#pInstr').value };
+    if (project) {
+      await api(`/projects/${pid}`, { method: 'PATCH', body: JSON.stringify(payload) });
+      toast(t.projectSaved);
+      await loadProjects();
+      modal.hidden = true;
+    } else {
+      const created = await api('/projects', { method: 'POST', body: JSON.stringify(payload) });
+      await loadProjects();
+      toast(t.projectSaved);
+      modal.hidden = true;
+      openProjectModal(created.id);
     }
   });
 
-  $('#toggle-pw').addEventListener('click', () => {
-    passwordInput.type = passwordInput.type === 'password' ? 'text' : 'password';
-    passwordInput.focus();
+  if (project) {
+    $('#pDelete').addEventListener('click', async () => {
+      if (!confirm(t.confirmDeleteProject)) return;
+      await api(`/projects/${pid}`, { method: 'DELETE' });
+      await loadProjects();
+      modal.hidden = true;
+      toast(t.deleted);
+    });
+  }
+
+  $('#dAdd').addEventListener('click', async () => {
+    const name = $('#dName').value.trim() || 'note.txt';
+    const text = $('#dText').value;
+    if (!text.trim()) return;
+    if (!project) { toast(t.save); return; }
+    await api(`/projects/${pid}/docs`, { method: 'POST', body: JSON.stringify({ name, text }) });
+    $('#dName').value = '';
+    $('#dText').value = '';
+    const fresh = await api(`/projects/${pid}`);
+    renderDocs(fresh.docs);
+    await loadProjects();
+    toast(t.filesAdded);
+  });
+}
+
+/* ───────────────────────────────────────────────────────────────── artifacts */
+function openArtifact(codeEl) {
+  const card = codeEl.closest('.code-card');
+  const code = card.querySelector('code').textContent;
+  const lang = card.querySelector('.code-tools [data-act="open-code"]').dataset.lang || 'text';
+  const isWeb = /^(html|xml|svg)$/i.test(lang) || /^<!doctype html/i.test(code);
+
+  state.artifact = { code, lang };
+  const panel = $('#artifact');
+  const tabs = $('#artifactTabs');
+  panel.hidden = false;
+  $('#app').classList.add('has-artifact');
+
+  tabs.innerHTML = `<button type="button" class="is-active">${esc(lang || 'code')}</button>` +
+    (isWeb ? `<button type="button" data-tab="preview">${t.run}</button>` : '');
+
+  const showCode = () => {
+    $('#artifactPreview').hidden = true;
+    const pre = $('#artifactCode');
+    pre.hidden = false;
+    pre.innerHTML = `<code>${highlight(code, lang)}</code>`;
+    $$('#artifactTabs button').forEach((b) => b.classList.toggle('is-active', !b.dataset.tab));
+  };
+  const showPreview = () => {
+    $('#artifactCode').hidden = true;
+    const frame = $('#artifactPreview');
+    frame.hidden = false;
+    frame.srcdoc = isWeb === true && !/^(svg)$/i.test(lang) && !/^<!doctype/i.test(code) && /<html/i.test(code) === false
+      ? code
+      : code;
+    $$('#artifactTabs button').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === 'preview'));
+  };
+
+  showCode();
+  $$('#artifactTabs button').forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.tab === 'preview') showPreview(); else showCode();
+  }));
+}
+
+function closeArtifact() {
+  $('#artifact').hidden = true;
+  $('#app').classList.remove('has-artifact');
+  state.artifact = null;
+}
+
+/* ─────────────────────────────────────────────────────────────────── handlers */
+function autosize() {
+  const el = $('#input');
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${Math.min(el.scrollHeight, 210)}px`;
+  const btn = $('#sendBtn');
+  if (btn && !state.streaming) btn.disabled = !el.value.trim() && !state.attachments.length;
+}
+
+function codeBlockText(id) {
+  const src = document.querySelector(`[data-src="${id}"]`);
+  if (src) return src.value;
+  const code = document.querySelector(`[data-code-id="${id}"] code`);
+  return code ? code.textContent : '';
+}
+
+function wireGlobalEvents() {
+  // language toggle
+  document.addEventListener('click', (e) => {
+    const langBtn = e.target.closest('[data-lang-toggle]');
+    if (langBtn) {
+      state.lang = state.lang === 'ar' ? 'en' : 'ar';
+      applyLang();
+      return;
+    }
+    const actBtn = e.target.closest('[data-act]');
+    if (!actBtn) return;
+    const act = actBtn.dataset.act;
+
+    if (act === 'delete-conv') {
+      deleteConversation(actBtn.dataset.id).catch(() => {});
+      return;
+    }
+    if (act === 'copy-code') {
+      const text = codeBlockText(actBtn.dataset.target);
+      navigator.clipboard.writeText(text).then(() => toast(t.copied), () => {});
+      return;
+    }
+    if (act === 'download-code') {
+      const text = codeBlockText(actBtn.dataset.target);
+      const lang = actBtn.dataset.lang || 'txt';
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `kosmos-${Date.now()}.${/^(html|xml|svg)$/i.test(lang) ? 'html' : lang === 'python' ? 'py' : lang || 'txt'}`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      return;
+    }
+    if (act === 'open-code') {
+      openArtifact(actBtn.closest('.code-card').querySelector('code'));
+      return;
+    }
+    if (act === 'copy-msg') {
+      const idx = Number(actBtn.dataset.index);
+      navigator.clipboard.writeText(state.messages[idx]?.content || '').then(() => toast(t.copied), () => {});
+      return;
+    }
+    if (act === 'regen') {
+      const lastUser = [...state.messages].reverse().find((m) => m.role === 'user');
+      if (lastUser) send(lastUser.content);
+      return;
+    }
   });
 
-  $('#logout').addEventListener('click', async () => {
-    await apiFetch('/api/logout', { method: 'POST' }).catch(() => {});
-    clearToken();
-    state.authed = false;
+  // login
+  $('#loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = $('#loginBtn');
+    const errBox = $('#loginError');
+    errBox.hidden = true;
+    btn.disabled = true;
+    try {
+      await api('/login', {
+        method: 'POST',
+        body: JSON.stringify({ password: $('#password').value, persistent: $('#persistent').checked })
+      });
+      $('#password').value = '';
+      showApp();
+      await checkAuth();
+    } catch (err) {
+      errBox.hidden = false;
+      errBox.textContent = err.status === 429 ? t.tooMany : (err.body && state.lang === 'ar' && err.body.messageAr) || t.wrongPassword;
+      $('#password').select();
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // logout
+  $('#logoutBtn').addEventListener('click', async () => {
+    try { await api('/logout', { method: 'POST' }); } catch { /* ignore */ }
     showGate();
   });
 
-  // -------------------------------------------------------
-  // UI events
-  // -------------------------------------------------------
-  function autoGrow() {
-    inputEl.style.height = 'auto';
-    inputEl.style.height = Math.min(inputEl.scrollHeight, 210) + 'px';
-  }
-
-  inputEl.addEventListener('input', () => {
-    autoGrow();
-    updateSendState();
+  // composer
+  const form = $('#composer');
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (state.streaming) { state.abort?.abort(); return; }
+    send();
   });
 
-  inputEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+  const input = $('#input');
+  input.addEventListener('input', autosize);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
-      if (!sendBtn.disabled || state.streaming) sendMessage();
+      if (!state.streaming) send();
     }
   });
 
-  sendBtn.addEventListener('click', sendMessage);
-
-  segBtns.forEach((btn) =>
-    btn.addEventListener('click', () => {
-      segBtns.forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
-      state.mode = btn.dataset.mode;
-      const map = { code: 'welcomeSub', explain: 'modeExplain', debug: 'modeDebug' };
-      $('#topbar-sub').textContent = btn.dataset.mode === 'code' ? t('welcomeSub') : t(map[state.mode]);
-      inputEl.focus();
-    })
-  );
-
-  $('#new-chat').addEventListener('click', () => {
-    newChat();
-    closeSidebarOnMobile();
-  });
-
-  $('#lang-toggle').addEventListener('click', () => {
-    applyLang(lang === 'ar' ? 'en' : 'ar');
-    if (!messagesEl.querySelector('.msg')) showEmptyState();
-    updateEngineBadge();
-  });
-
-  $('#close-preview').addEventListener('click', () => {
-    $('#preview-modal').classList.add('hidden');
-    $('#preview-frame').srcdoc = '';
-  });
-
-  $('#preview-modal').addEventListener('click', (e) => {
-    if (e.target.id === 'preview-modal') {
-      $('#preview-modal').classList.add('hidden');
-      $('#preview-frame').srcdoc = '';
+  $('#sendBtn').addEventListener('click', (e) => {
+    if (state.streaming) {
+      e.preventDefault();
+      state.abort?.abort();
     }
   });
 
-  $('#menu-btn').addEventListener('click', () => {
-    sidebar.classList.add('open');
-    $('#mobile-overlay').classList.remove('hidden');
+  // attachments
+  $('#attachBtn').addEventListener('click', () => $('#fileInput').click());
+  $('#fileInput').addEventListener('change', (e) => {
+    handleFiles([...e.target.files]).catch(() => {});
+    e.target.value = '';
   });
 
-  function closeSidebarOnMobile() {
-    if (window.innerWidth <= 860) {
-      sidebar.classList.remove('open');
-      $('#mobile-overlay').classList.add('hidden');
-    }
-  }
-  $('#mobile-overlay').addEventListener('click', closeSidebarOnMobile);
+  // drag & drop
+  const dropZone = $('#chatScroll');
+  ['dragover', 'drop'].forEach((type) => dropZone.addEventListener(type, (e) => {
+    e.preventDefault();
+    if (type === 'drop' && e.dataTransfer?.files?.length) handleFiles([...e.dataTransfer.files]);
+  }));
 
+  // paste image
+  input.addEventListener('paste', (e) => {
+    const files = [...(e.clipboardData?.files || [])];
+    if (files.length) { e.preventDefault(); handleFiles(files); }
+  });
+
+  // modes
+  $$('.mode-btn').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+
+  // new chat
+  $('#newChat').addEventListener('click', () => { newChat(); $('#sidebar').classList.remove('is-open'); });
+
+  // sidebar nav
+  $$('.nav-item').forEach((b) => b.addEventListener('click', () => {
+    const view = b.dataset.view;
+    $$('.nav-item').forEach((x) => x.classList.toggle('is-active', x === b));
+    $('#convList').hidden = view !== 'chat';
+    $('#projectList').hidden = view !== 'projects';
+    $('#newProjectBtn').hidden = view !== 'projects';
+    if (view === 'projects') loadProjects();
+  }));
+
+  // projects
+  $('#closeProjectModal').addEventListener('click', () => { $('#projectModal').hidden = true; });
+  $('#projectModal').addEventListener('click', (e) => {
+    if (e.target.id === 'projectModal') $('#projectModal').hidden = true;
+  });
+
+  // mobile sidebar
+  $('#openSidebar').addEventListener('click', () => $('#sidebar').classList.add('is-open'));
+  $('#closeSidebar').addEventListener('click', () => $('#sidebar').classList.remove('is-open'));
+
+  // artifact tools
+  $('#artifactClose').addEventListener('click', closeArtifact);
+  $('#artifactCopy').addEventListener('click', () => {
+    if (state.artifact) navigator.clipboard.writeText(state.artifact.code).then(() => toast(t.copied), () => {});
+  });
+  $('#artifactDownload').addEventListener('click', () => {
+    if (!state.artifact) return;
+    const ext = /^(html|xml|svg)$/i.test(state.artifact.lang) ? 'html' : (state.artifact.lang || 'txt');
+    const blob = new Blob([state.artifact.code], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `kosmos-${Date.now()}.${ext}`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  });
+
+  // keyboard shortcuts
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      closeSidebarOnMobile();
-      $('#preview-modal').classList.add('hidden');
+      if (!$('#projectModal').hidden) $('#projectModal').hidden = true;
+      else if (state.artifact) closeArtifact();
+      else if (state.streaming) state.abort?.abort();
     }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
-      inputEl.focus();
+      newChat();
     }
   });
 
-  // -------------------------------------------------------
-  // Boot
-  // -------------------------------------------------------
-  (async function boot() {
-    applyLang(lang);
-    const urlToken = tokenFromHash();
-    if (urlToken) setToken(urlToken);
-    updateSendState();
-    try {
-      const res = await apiFetch('/api/me');
-      const data = await res.json();
-      state.authed = data.authed;
-      if (data.model) state.model = { ...state.model, ...data.model };
-      if (data.engine) state.engine = data.engine;
-      $('#m-name').textContent = state.model.name;
-      $('#m-quant').textContent = state.model.quant;
-      $('#m-ctx').textContent = state.model.ctx;
-      $('#gate-model').textContent = `${state.model.name} · ${state.model.quant}`;
-    } catch {}
-    if (state.authed) showApp();
-    else showGate();
-    updateEngineBadge();
-  })();
-})();
+  // new project button lives in the markup so i18n can translate it
+  $('#newProjectBtn').addEventListener('click', () => openProjectModal(null));
+
+  // theme follows the OS on first visit
+  if (!localStorage.getItem('kosmos.theme')) {
+    state.theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  }
+  applyTheme();
+}
+
+/* ────────────────────────────────────────────── activity log + prompts */
+// A small local "activity" trail: files you touched and prompts you sent, so the
+// sidebar can offer them back. Stored in localStorage only — nothing leaves the
+// browser.
+function logActivity(kind, label) {
+  try {
+    const key = 'kosmos.activity';
+    const items = JSON.parse(localStorage.getItem(key) || '[]');
+    items.unshift({ kind, label: String(label).slice(0, 120), at: Date.now() });
+    localStorage.setItem(key, JSON.stringify(items.slice(0, 60)));
+  } catch { /* storage full or blocked */ }
+}
+
+function readActivity() {
+  try {
+    return JSON.parse(localStorage.getItem('kosmos.activity') || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function rememberPrompt(text, mode) {
+  try {
+    const key = 'kosmos.prompts';
+    const items = JSON.parse(localStorage.getItem(key) || '[]');
+    const entry = { text: String(text).slice(0, 300), mode, at: Date.now() };
+    const dedup = items.filter((i) => i.text !== entry.text);
+    dedup.unshift(entry);
+    localStorage.setItem(key, JSON.stringify(dedup.slice(0, 30)));
+  } catch { /* ignore */ }
+}
+
+function readPrompts() {
+  try {
+    return JSON.parse(localStorage.getItem('kosmos.prompts') || '[]');
+  } catch {
+    return [];
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────── boot */
+// A tiny debug handle: inspect the client from the console, and lets the
+// automated UI test assert on real state instead of guessing from the DOM.
+window.kosmos = { state, renderMarkdown, I18N };
+
+async function boot() {
+  applyTheme();
+  applyLang();
+  wireGlobalEvents();
+  renderChips();
+  updateWelcome();
+  await checkAuth();
+  pollModel();
+}
+
+boot();

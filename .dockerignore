@@ -1,7 +1,0 @@
-.git
-.github
-llama.cpp
-models
-node_modules
-tests
-*.log

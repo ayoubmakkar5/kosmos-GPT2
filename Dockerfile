@@ -1,27 +1,28 @@
+# syntax=docker/dockerfile:1
 # ---------------------------------------------------------------------------
-# Kosmos Code — Node.js + llama.cpp + the real Qwen3-0.6B GGUF weights
+# Kosmos AI — Node 22 + llama.cpp (LFM3-enabled) + Liquid AI LFM3-1.7B
 #
-# Build order:
-#   1. engine-builder: fetch a pinned llama.cpp snapshot (npm) and compile
-#      llama-server for CPU — no GPU / network beyond npm+github needed
-#   2. runtime: Node 20 + llama-server + the real Qwen3-0.6B Q4_K_M weights,
-#      downloaded through a mirror with a SHA-256 verification
+# Stage 1 builds llama-server from llama.cpp v0.8.0, the first release that
+# understands the `lfm3` architecture.
+# Stage 2 downloads the GGUF weights and runs the app.
+#
+#   docker build -t kosmos-ai .
+#   docker run -p 3000:3000 -e APP_PASSWORD='Kosmos@2026' kosmos-ai
 # ---------------------------------------------------------------------------
-FROM debian:bookworm-slim AS engine-builder
+FROM debian:bookworm-slim AS engine
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      cmake build-essential ca-certificates ninja-build curl git nodejs npm \
+      ca-certificates curl git build-essential cmake python3 \
     && rm -rf /var/lib/apt/lists/*
 
+ARG LLAMA_VERSION=0.8.0
 WORKDIR /src
-COPY scripts/fetch-engine.sh ./scripts/fetch-engine.sh
-# The llama.cpp source is fetched at build time (npm snapshot) so it does not
-# have to live in the repository; a vendored ./engine is still used if present.
-COPY engine* ./engine/
-RUN bash scripts/fetch-engine.sh \
-    && ls engine/tools/server/main.cpp >/dev/null
+RUN curl -fL --retry 3 -o llama.tar.gz \
+      "https://codeload.github.com/ggml-org/llama.cpp/tar.gz/refs/tags/v${LLAMA_VERSION}" \
+ && mkdir -p llama && tar -xzf llama.tar.gz -C llama --strip-components=1 \
+ && grep -q lfm3 llama/src/llama-arch.cpp
 
-RUN cmake -S engine -B engine/build -G Ninja \
+RUN cmake -S llama -B llama/build \
       -DCMAKE_BUILD_TYPE=Release \
       -DLLAMA_CURL=OFF \
       -DGGML_NATIVE=OFF \
@@ -34,36 +35,40 @@ RUN cmake -S engine -B engine/build -G Ninja \
       -DMTMD_VIDEO=OFF \
       -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=/opt/llama/bin \
       -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/opt/llama/bin \
-    && cmake --build engine/build --target llama-server -j"$(nproc)"
+ && cmake --build llama/build --target llama-server -j"$(nproc)" \
+ && test -x /opt/llama/bin/llama-server
 
 # ---------------------------------------------------------------------------
-FROM node:20-bookworm-slim
+FROM node:22-bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      curl ca-certificates libgomp1 \
+      ca-certificates curl libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY --from=engine-builder /opt/llama/bin /app/llama.cpp/build/bin
-
-COPY package.json server.js ./
+COPY --from=engine /opt/llama/bin /app/llama.cpp/build/bin
+COPY package.json server.js config.js engine-client.js auth.js store.js \
+     prompts.js chat-template.js ./
 COPY public ./public
 COPY scripts ./scripts
 
-# Real Qwen3-0.6B weights (484 MB) + SHA-256 verification
-RUN bash scripts/download-model.sh && rm -rf /tmp/model-parts
+# LFM3-1.7B weights (~1.1 GB at Q4_K_M). Cached as its own layer so a code
+# change does not re-download it.
+ARG QUANT=Q4_K_M
+RUN bash scripts/download-model.sh
 
 ENV NODE_ENV=production \
     PORT=3000 \
     HOST=0.0.0.0 \
-    MODEL_PATH=/app/models/Qwen3-0.6B-Q4_K_M.gguf \
+    MODEL_FILE=models/LFM3-1.7B-Q4_K_M.gguf \
+    CTX_SIZE=8192 \
     LLAMA_SERVER_BIN=/app/llama.cpp/build/bin/llama-server \
-    CTX_SIZE=4096
+    ENGINE_THREADS=4
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=120s \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=180s \
   CMD curl -fsS http://127.0.0.1:3000/api/health || exit 1
 
 CMD ["node", "server.js"]

@@ -1,64 +1,84 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Fetch the REAL Qwen3-0.6B GGUF model (Q4_K_M quantized, ~484 MB).
+# Fetch the LFM3-1.7B GGUF weights from Hugging Face (Liquid AI).
 #
-# The weights are Qwen/Qwen3-0.6B, converted + quantized to GGUF Q4_K_M by
-# unsloth/Qwen3-0.6B-GGUF. Two sources are tried, in order:
+# This is the ONLY step that needs internet access to huggingface.co. Everything
+# else (engine build, model load, serving) works offline afterwards.
 #
-#   1. Hugging Face  (single file, fastest when reachable)
-#   2. A public GitHub mirror, split in 24 chunks — used where Hugging Face is
-#      blocked (e.g. this sandbox).
+# Usage:
+#   bash scripts/download-model.sh                 # Q4_K_M (~1.1 GB, recommended)
+#   QUANT=Q8_0 bash scripts/download-model.sh      # Q8_0   (~1.85 GB)
+#   QUANT=Q4_0 bash scripts/download-model.sh      # Q4_0   (~1.06 GB, smallest sane)
 #
-# Both routes end with a SHA-256 check against the official GGUF checksum.
-#
-# Usage:  bash scripts/download-model.sh
+# Quant guide (file sizes from the official repo):
+#   Q4_K_M 1.12 GB · best size/quality trade-off
+#   Q5_K_M 1.26 GB · noticeably better Arabic
+#   Q8_0   1.85 GB · reference quality
 # ---------------------------------------------------------------------------
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-REPO="jiegengxiangjianxue/llm-models"
-EXPECTED_SHA="9acfc1e001311f34b4252001b626f2e466d592a42065f66571bff3790d4e1b14"
-OUT="models/Qwen3-0.6B-Q4_K_M.gguf"
-HF_URL="https://huggingface.co/unsloth/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q4_K_M.gguf?download=true"
+REPO="${HF_REPO:-LiquidAI/LFM3-1.7B-GGUF}"
+QUANT="${QUANT:-Q4_K_M}"
+FILE="${HF_FILE:-LFM3-1.7B-${QUANT}.gguf}"
+OUT="models/${FILE}"
+URL="${HF_URL:-https://huggingface.co/${REPO}/resolve/main/${FILE}?download=true}"
+MIRROR="${HF_MIRROR:-https://hf-mirror.com/${REPO}/resolve/main/${FILE}?download=true}"
 
 mkdir -p models
 
-verify() {
-  echo "==> verifying sha256"
-  local actual
-  actual="$(sha256sum "$OUT" | cut -d' ' -f1)"
-  echo "    expected: $EXPECTED_SHA"
-  echo "    actual  : $actual"
-  if [ "$actual" != "$EXPECTED_SHA" ]; then
-    echo "!! checksum mismatch — the model file is corrupt" >&2
-    return 1
-  fi
-  echo "==> OK: $OUT"
-}
-
-# Already downloaded and valid?
-if [ -s "$OUT" ] && verify >/dev/null 2>&1; then
-  echo "==> model already present: $OUT"
+if [ -s "$OUT" ] && [ "$(stat -c%s "$OUT" 2>/dev/null || stat -f%z "$OUT")" -gt 100000000 ]; then
+  echo "==> model already present: $OUT ($(du -h "$OUT" | cut -f1))"
   exit 0
 fi
 
-echo "==> trying Hugging Face"
-if curl -fsSL --retry 2 --max-time 600 -o "$OUT.tmp" "$HF_URL" 2>/dev/null; then
-  mv "$OUT.tmp" "$OUT"
-else
-  rm -f "$OUT.tmp"
-  echo "    Hugging Face not reachable, falling back to the GitHub mirror"
-  mkdir -p models/parts
-  for i in $(seq -w 0 23); do
-    f="models/parts/qwen06b_q4.part-$i"
-    [ -s "$f" ] && continue
-    curl -sL --retry 3 -o "$f" \
-      "https://api.github.com/repos/$REPO/contents/models/qwen06b_q4.part-$i" \
-      -H "Accept: application/vnd.github.raw"
-  done
-  echo "==> assembling $OUT"
-  cat models/parts/qwen06b_q4.part-* > "$OUT"
-  rm -rf models/parts
+download() {
+  local url="$1" label="$2"
+  echo "==> downloading $label"
+  echo "    $url"
+  if command -v curl >/dev/null; then
+    curl -fL --retry 3 --retry-delay 2 -C - --progress-bar -o "$OUT.part" "$url"
+  else
+    wget -c -O "$OUT.part" "$url"
+  fi
+}
+
+# 1) huggingface.co, 2) hf-mirror.com, 3) hf CLI if installed
+if ! download "$URL" "Hugging Face"; then
+  rm -f "$OUT.part"
+  echo "!! huggingface.co unreachable, trying the hf-mirror mirror"
+  if ! download "$MIRROR" "hf-mirror.com"; then
+    rm -f "$OUT.part"
+    if command -v hf >/dev/null; then
+      echo "==> falling back to the hf CLI"
+      hf download "$REPO" "$FILE" --local-dir models
+    else
+      echo "" >&2
+      echo "!! Could not download the weights." >&2
+      echo "   Download the file manually on a machine with access:" >&2
+      echo "     https://huggingface.co/${REPO}/blob/main/${FILE}" >&2
+      echo "   then place it at: $(pwd)/$OUT" >&2
+      exit 1
+    fi
+  fi
 fi
 
-verify
+[ -f "$OUT.part" ] && mv "$OUT.part" "$OUT"
+
+echo "==> downloaded $OUT ($(du -h "$OUT" | cut -f1))"
+
+# Optional integrity check: set MODEL_SHA256 to the checksum Liquids publishes
+if [ -n "${MODEL_SHA256:-}" ]; then
+  echo "==> verifying sha256"
+  ACTUAL="$(sha256sum "$OUT" | cut -d' ' -f1)"
+  if [ "$ACTUAL" != "${MODEL_SHA256,,}" ]; then
+    echo "!! checksum mismatch" >&2
+    echo "   expected: $MODEL_SHA256" >&2
+    echo "   actual:   $ACTUAL" >&2
+    exit 1
+  fi
+  echo "==> checksum OK"
+fi
+
+echo ""
+echo "Next: npm start   (the server starts llama-server with this model)"
