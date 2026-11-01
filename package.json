@@ -1,0 +1,19 @@
+{
+  "name": "kosmos-code",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Kosmos Code — password-protected AI coding web app powered by a real Qwen3 model running locally on llama.cpp",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "build:engine": "bash scripts/build-engine.sh",
+    "download:model": "bash scripts/download-model.sh",
+    "test": "node tests/e2e.mjs && node tests/hard.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "licenses": "MIT",
+  "dependencies": {}
+}
