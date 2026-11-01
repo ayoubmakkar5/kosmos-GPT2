@@ -1,11 +1,18 @@
 name: Deploy to openpouch
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'server.js'
+      - 'public/**'
+      - 'Dockerfile'
+      - '.github/workflows/deploy-openpouch.yml'
   workflow_dispatch:
     inputs:
       password:
         description: 'كلمة سر الموقع (تُحقن كمتغير بيئة في الاستضافة)'
-        required: true
+        required: false
         default: 'Kosmos@2026'
 
 jobs:
@@ -21,7 +28,7 @@ jobs:
 
       - name: Deploy (Dockerfile → openpouch)
         env:
-          APP_PASSWORD: ${{ inputs.password }}
+          APP_PASSWORD: ${{ inputs.password || 'Kosmos@2026' }}
         run: |
           npx -y openpouch@latest deploy . \
             --json \
