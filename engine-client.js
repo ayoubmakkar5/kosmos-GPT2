@@ -31,6 +31,9 @@ class Engine {
     this.log = [];
     this._starting = null;
     this._lastRequest = 0;
+    // Some checkpoints (Qwen3 family) default to a long hidden reasoning pass,
+    // which leaves `content` empty when the token budget is small. The server
+    // passes chat_template_kwargs per request instead, so nothing to do here.
   }
 
   // ---------------------------------------------------------------- logging

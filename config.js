@@ -20,9 +20,42 @@ function flag(value, fallback) {
   return !/^(0|false|no|off)$/i.test(String(value));
 }
 
-const MODEL_DEFAULT = process.env.MODEL_FILE
-  ? path.resolve(ROOT, process.env.MODEL_FILE)
-  : path.join(ROOT, 'models', 'LFM3-1.7B-Q4_K_M.gguf');
+const fs = require('fs');
+
+/**
+ * Pick the model file: an explicit MODEL_FILE wins, otherwise prefer the LFM3
+ * checkpoint and fall back to whatever single GGUF is sitting in models/.
+ */
+function resolveModelFile() {
+  if (process.env.MODEL_FILE) return path.resolve(ROOT, process.env.MODEL_FILE);
+  const dir = path.join(ROOT, 'models');
+  const preferred = ['LFM3-1.7B-Q4_K_M.gguf', 'LFM3-1.7B-Q5_K_M.gguf', 'LFM3-1.7B-Q8_0.gguf'];
+  for (const name of preferred) {
+    const p = path.join(dir, name);
+    try { if (fs.statSync(p).size > 1e8) return p; } catch { /* next */ }
+  }
+  try {
+    const ggufs = fs.readdirSync(dir).filter((f) => f.endsWith('.gguf'));
+    const lfm3 = ggufs.find((f) => /lfm3/i.test(f));
+    if (lfm3) return path.join(dir, lfm3);
+    if (ggufs.length) {
+      // deterministic: the biggest one is the most capable
+      const best = ggufs
+        .map((f) => [f, fs.statSync(path.join(dir, f)).size])
+        .sort((a, b) => b[1] - a[1])[0][0];
+      return path.join(dir, best);
+    }
+  } catch { /* empty dir */ }
+  return path.join(dir, 'LFM3-1.7B-Q4_K_M.gguf');
+}
+
+const MODEL_DEFAULT = resolveModelFile();
+
+/** "models/Qwen3-0.6B-Q4_K_M.gguf" → "Qwen3-0.6B" */
+function nameFromFile(file) {
+  const base = path.basename(file, '.gguf');
+  return base.replace(/[-_.](Q\d.*|iq\d.*|f16|bf16|f32|fp16)$/i, '') || base;
+}
 
 const config = {
   root: ROOT,
@@ -47,10 +80,11 @@ const config = {
 
   model: {
     path: MODEL_DEFAULT,
-    name: process.env.MODEL_NAME || 'LFM3-1.7B',
+    // Show the truth: name comes from the file actually loaded, not a guess
+    name: process.env.MODEL_NAME || nameFromFile(MODEL_DEFAULT),
     vendor: 'Liquid AI',
     quant: process.env.MODEL_QUANT || 'Q4_K_M',
-    params: process.env.MODEL_PARAMS || '1.73B',
+    params: process.env.MODEL_PARAMS || (/lfm3/i.test(MODEL_DEFAULT) ? '1.73B' : '0.6B'),
     nativeContext: num(process.env.MODEL_NATIVE_CTX, 262144),
     // runtime context: 8K by default — 256K needs ~1.6 GB of KV cache alone
     context: num(process.env.CTX_SIZE, 8192),
