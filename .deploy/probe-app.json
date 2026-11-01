@@ -1,0 +1,10 @@
+{
+  "ok": false,
+  "summary": "The hosting provider ran into a problem. What to do next: Check the openpouch-run service status; the deployment may have expired (72h unclaimed).",
+  "error": {
+    "category": "provider",
+    "message": "openpouch-run 503: dynamic lane at capacity — try again later",
+    "fix": "Check the openpouch-run service status; the deployment may have expired (72h unclaimed)."
+  },
+  "feedbackHint": "Optional — if openpouch made this harder than it should be, you can tell us: `openpouch feedback \"<what tripped you up>\"`. Never required, never blocks, and it sends only your note (no project files or secrets). Opt out with DO_NOT_TRACK=1."
+}
