@@ -241,7 +241,12 @@ async function apiLogin(req, res) {
     ip
   });
   const maxAge = Math.floor((session.expiresAt - Date.now()) / 1000);
-  const policy = cookiePolicy(req);
+  // The login XHR is same-origin, so fetch metadata alone cannot tell us the
+  // page is framed inside someone else's site — the client reports that.
+  // Without it the cookie ships as SameSite=Lax, the browser drops it as a
+  // third-party cookie, and the next /me call 401s.
+  const framed = body.framed === true || req.headers['x-kosmos-framed'] === '1';
+  const policy = cookiePolicy(req, { framed });
   sendJSON(res, 200, {
     ok: true,
     expiresAt: session.expiresAt,

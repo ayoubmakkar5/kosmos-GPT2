@@ -42,6 +42,40 @@ const plainCookie = plain.headers.get('set-cookie') || '';
 check('plain-http cookie is not Secure', !/Secure/.test(plainCookie), plainCookie);
 check('plain-http cookie is SameSite=Lax', /SameSite=Lax/.test(plainCookie));
 
+// 4b. REGRESSION: the login call is an XHR, so its fetch metadata says
+// sec-fetch-dest: empty / sec-fetch-site: same-origin even when the page is
+// framed. Trusting only the destination shipped a SameSite=Lax cookie, the
+// browser dropped it as third-party, and login bounced back to the gate.
+// Only the page can report that it is framed, so the client sends `framed`.
+const framedLogin = await fetch(`${BASE}/api/login`, {
+  method: 'POST', headers: { 'content-type': 'application/json', ...H },
+  body: JSON.stringify({ password: 'Kosmos@2026', framed: true })
+});
+const framedCookie = framedLogin.headers.get('set-cookie') || '';
+check('framed login sets SameSite=None', /SameSite=None/.test(framedCookie), framedCookie);
+check('framed login is Secure', /Secure/.test(framedCookie), framedCookie);
+check('framed login is HttpOnly', /HttpOnly/.test(framedCookie), framedCookie);
+
+// The same login without the hint cannot claim None safely, but must still work
+// for a normal top-level tab.
+const topLevel = await fetch(`${BASE}/api/login`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', 'x-forwarded-proto': 'https', 'sec-fetch-dest': 'empty', 'sec-fetch-site': 'same-origin' },
+  body: JSON.stringify({ password: 'Kosmos@2026', framed: false })
+});
+const topLevelCookie = topLevel.headers.get('set-cookie') || '';
+check('top-level login stays SameSite=Lax', /SameSite=Lax/.test(topLevelCookie), topLevelCookie);
+
+// A cross-site document load (sec-fetch-site: cross-site) is framed even when
+// the destination header is missing, and must get None as well.
+const crossSite = await fetch(`${BASE}/api/login`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', 'x-forwarded-proto': 'https', 'sec-fetch-site': 'cross-site' },
+  body: JSON.stringify({ password: 'Kosmos@2026' })
+});
+const crossSiteCookie = crossSite.headers.get('set-cookie') || '';
+check('cross-site load sets SameSite=None', /SameSite=None/.test(crossSiteCookie), crossSiteCookie);
+
 // 5. a chat turn still works inside the frame
 const conv = await (await fetch(`${BASE}/api/conversations`, {
   method: 'POST', headers: { 'content-type': 'application/json', cookie, ...H },

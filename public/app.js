@@ -15,6 +15,7 @@ const I18N = {
     staySignedIn: 'ابقني مسجلاً',
     wrongPassword: 'كلمة السر غير صحيحة.',
     tooMany: 'محاولات كثيرة. حاول بعد 10 دقائق.',
+    cookieBlocked: 'تم قبول كلمة السر، لكن المتصفح رفض الجلسة. افتح الموقع في نافذة مستقلة أو اسمح بالكوكيز لهذا الموقع.',
     networkError: 'تعذّر الاتصال بالخادم.',
     newChat: 'محادثة جديدة',
     chats: 'المحادثات',
@@ -79,6 +80,7 @@ const I18N = {
     staySignedIn: 'Keep me signed in',
     wrongPassword: 'Wrong password.',
     tooMany: 'Too many attempts. Try again in 10 minutes.',
+    cookieBlocked: 'The password was accepted, but the browser refused the session. Open the app in its own tab or allow cookies for this site.',
     networkError: 'Could not reach the server.',
     newChat: 'New chat',
     chats: 'Chats',
@@ -1191,13 +1193,37 @@ function wireGlobalEvents() {
     errBox.hidden = true;
     btn.disabled = true;
     try {
+      // When the app is embedded (an arena preview iframe) the session cookie is
+      // third-party. Only the page itself can detect that, because the login XHR
+      // is same-origin and carries no cross-site signal.
+      let framed = false;
+      try { framed = window.self !== window.top; } catch { framed = true; }
+
       await api('/login', {
         method: 'POST',
-        body: JSON.stringify({ password: $('#password').value, persistent: $('#persistent').checked })
+        body: JSON.stringify({ password: $('#password').value, persistent: $('#persistent').checked, framed })
       });
       $('#password').value = '';
+
+      // Trust the server's answer only if the session cookie actually survived.
+      // A blocked third-party cookie makes login "succeed" and then bounce
+      // straight back here, which used to look like a wrong password.
+      const session = await api('/me').catch(() => null);
+      if (!session || !session.authed) {
+        errBox.hidden = false;
+        errBox.textContent = t.cookieBlocked;
+        return;
+      }
+
+      state.model = session.model;
       showApp();
-      await checkAuth();
+      updateModelBadge();
+      await Promise.all([loadConversations(), loadProjects()]);
+      if (state.conversations.length) {
+        await openConversation(state.conversations[0].id);
+      } else {
+        newChat();
+      }
     } catch (err) {
       errBox.hidden = false;
       errBox.textContent = err.status === 429 ? t.tooMany : (err.body && state.lang === 'ar' && err.body.messageAr) || t.wrongPassword;

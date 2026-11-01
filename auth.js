@@ -179,11 +179,20 @@ function serializeCookie(name, value, { maxAge, httpOnly = true, sameSite = 'Lax
  * which would make the login appear to succeed and then bounce straight back to
  * the gate — so this must be decided per request, not baked in.
  */
-function cookiePolicy(req) {
+function cookiePolicy(req, { framed = false } = {}) {
   const forwarded = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
   const secure = forwarded ? forwarded === 'https' : Boolean(req.socket.encrypted);
   // SameSite=None requires Secure; only use it when we are actually on TLS.
-  const embedded = String(req.headers['sec-fetch-dest'] || '') === 'iframe';
+  //
+  // "Embedded" has to be detected from two signals, not one. A document load
+  // inside an iframe reports sec-fetch-dest: iframe, but the login call is an
+  // XHR and reports sec-fetch-dest: empty — while sec-fetch-site still says
+  // cross-site. Checking only the destination marked the session cookie Lax,
+  // which the browser then dropped as a third-party cookie, so the password was
+  // accepted and the app bounced straight back to the gate with no error.
+  const dest = String(req.headers['sec-fetch-dest'] || '');
+  const site = String(req.headers['sec-fetch-site'] || '');
+  const embedded = framed || dest === 'iframe' || dest === 'frame' || site === 'cross-site';
   const sameSite = secure && embedded ? 'None' : 'Lax';
   return { secure, sameSite: secure ? sameSite : 'Lax' };
 }
