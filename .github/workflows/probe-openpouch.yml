@@ -1,0 +1,34 @@
+name: Probe openpouch capacity
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'optional --app name'
+        required: false
+        default: ''
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Probe (static mini app)
+        run: |
+          set +e
+          mkdir -p probe && printf '<!doctype html><title>probe</title><h1>probe ok</h1>' > probe/index.html
+          npx -y openpouch@latest deploy probe --json | tee /tmp/probe.json
+          echo "::group::parsed"
+          node -e "
+            const r=JSON.parse(require('fs').readFileSync('/tmp/probe.json','utf8'));
+            console.log('ok:', r.ok, '| url:', r.url||'(none)', '| health:', r.healthStatus||'-');
+            console.log('error:', r.error ? r.error.category+': '+r.error.message : '-');
+            if (process.env.GITHUB_STEP_SUMMARY) require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+              '## openpouch probe\n\n- ok: **'+r.ok+'**\n- url: '+(r.url||'_none_')+'\n- error: '+((r.error&&r.error.message)||'-')+'\n');
+          "
