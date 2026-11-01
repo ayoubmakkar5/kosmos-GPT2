@@ -13,7 +13,7 @@ on:
         default: ''
 
 jobs:
-  probe:
+  probe-kosmos:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -33,6 +33,28 @@ jobs:
             const r=JSON.parse(require('fs').readFileSync('/tmp/probe.json','utf8'));
             console.log('ok:', r.ok, '| url:', r.url||'(none)', '| health:', r.healthStatus||'-');
             console.log('error:', r.error ? r.error.category+': '+r.error.message : '-');
+            console.log('RESULT_JSON=' + JSON.stringify({ok:r.ok, url:r.url, claim:r.claimUrl, health:r.healthStatus, error:r.error&&r.error.message}));
             if (process.env.GITHUB_STEP_SUMMARY) require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY,
               '## openpouch probe\n\n- ok: **'+r.ok+'**\n- url: '+(r.url||'_none_')+'\n- error: '+((r.error&&r.error.message)||'-')+'\n');
+          "
+
+  probe-app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Deploy the real Kosmos Code folder
+        env:
+          APP_PASSWORD: Kosmos@2026
+        run: |
+          set +e
+          npx -y openpouch@latest deploy . --json --health-path /api/health --var APP_PASSWORD="$APP_PASSWORD" > /tmp/app.json 2>/tmp/app.err
+          echo "exit=$?"
+          cat /tmp/app.json
+          node -e "
+            let r={}; try { r=JSON.parse(require('fs').readFileSync('/tmp/app.json','utf8')); } catch(e){}
+            console.log('RESULT_JSON=' + JSON.stringify({ok:r.ok,url:r.url,claim:r.claimUrl,health:r.healthStatus,error:r.error&&r.error.message}));
           "
