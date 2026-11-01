@@ -64,12 +64,30 @@ function nameFromFile(file) {
  */
 function vendorFromFile(file) {
   const name = nameFromFile(file);
+  if (/gpt-?oss/i.test(name)) return 'OpenAI';
   if (/qwen/i.test(name)) return 'Alibaba (Qwen)';
   if (/lfm/i.test(name)) return 'Liquid AI';
   if (/llama|mistral|mixtral|gemma|phi|deepseek|smollm/i.test(name)) {
     const m = name.match(/llama|mistral|mixtral|gemma|phi|deepseek|smollm/i);
     return m[0][0].toUpperCase() + m[0].slice(1).toLowerCase();
   }
+  return 'unknown';
+}
+
+/**
+ * Parameter count, inferred from the file name. gpt-oss ships as 20B (MoE, 3.6B
+ * active) and 120B (MoE, 5.1B active) under MXFP4.
+ */
+function paramsFromFile(file) {
+  const name = nameFromFile(file);
+  const m = name.match(/(\d+(?:\.\d+)?)\s?[bB](?![a-zA-Z])/);
+  if (/gpt-?oss/i.test(name)) {
+    if (/120b/i.test(name)) return '120B';
+    if (/20b/i.test(name)) return '20B';
+  }
+  if (m) return `${m[1]}B`;
+  if (/lfm3/i.test(name)) return '1.73B';
+  if (/qwen3/i.test(name)) return '0.6B';
   return 'unknown';
 }
 
@@ -104,7 +122,7 @@ const config = {
     vendor: process.env.MODEL_VENDOR || vendorFromFile(MODEL_DEFAULT),
     quant: process.env.MODEL_QUANT || 'Q4_K_M',
     // Qwen3-0.6B is 0.752B total / 0.596B non-embedding, hence the "0.6B".
-    params: process.env.MODEL_PARAMS || (/lfm3/i.test(MODEL_DEFAULT) ? '1.73B' : /qwen3/i.test(MODEL_DEFAULT) ? '0.6B' : 'unknown'),
+    params: process.env.MODEL_PARAMS || paramsFromFile(MODEL_DEFAULT),
     nativeContext: num(process.env.MODEL_NATIVE_CTX, 262144),
     // runtime context: 8K by default — 256K needs ~1.6 GB of KV cache alone
     context: num(process.env.CTX_SIZE, 8192),

@@ -111,6 +111,13 @@ plain HTTP it still works, but the password would travel in clear text.
 
 ## Sizing
 
+| Model | Weights (MXFP4/Q4) | Minimum RAM | Notes |
+|---|---|---|---|
+| Qwen3-0.6B | 0.46 GB | 2 GB | the shipped default |
+| LFM3-1.7B | 1.1 GB | 3 GB | the originally intended model |
+| gpt-oss-20b | ~12.8 GB | 16 GB | MoE, 3.6B active |
+| gpt-oss-120b | ~63 GB | 80 GB, or a GPU | MoE, 5.1B active |
+
 | Box | Context | Throughput |
 |---|---|---|
 | 2 vCPU / 4 GB | 8K | ~6–9 tok/s |
@@ -118,6 +125,42 @@ plain HTTP it still works, but the password would travel in clear text.
 | 1 GPU (8 GB+) | 32K+ | 100+ tok/s |
 
 Generation speed scales roughly linearly with cores for a 1.7B Q4 model.
+
+### Loading a bigger model, e.g. OpenAI's gpt-oss
+
+The engine bundled here (llama.cpp 0.8.0) already supports the `gpt-oss`
+architecture, its MXFP4 weights and the Harmony token format, so no rebuild is
+needed — only the weights:
+
+```bash
+# on a machine that can reach Hugging Face (this sandbox cannot)
+huggingface-cli download ggml-org/gpt-oss-20b-GGUF gpt-oss-20b-MXFP4.gguf \
+  --local-dir models/
+
+MODEL_FILE=models/gpt-oss-20b-MXFP4.gguf npm start
+```
+
+The vendor and parameter count are read from the file name, so `/api/health`
+and the UI badge switch to `OpenAI` / `20B` on their own. gpt-oss has its own
+chat template and Harmony channels; pass them through with
+
+```bash
+ENGINE_CHAT_TEMPLATE=gguf      # default: use the template embedded in the GGUF
+ENGINE_REASONING_FORMAT=deepseek   # optional, to surface thinking in the UI
+```
+
+The engine refuses to start a model that will not fit rather than letting the
+kernel OOM-kill it halfway through loading:
+
+```
+[engine] not enough memory for gpt-oss-20b-MXFP4.gguf: needs about 14.7 GB
+(weights 13.0 GB + KV cache 0.5 GB + buffers), this machine has 3.8 GB total
+with no swap.
+```
+
+Override with `MODEL_SKIP_MEMORY_CHECK=1` if the estimate is wrong for your box
+— for example when the weights are mmapped from a fast disk, or when you know
+the machine has swap.
 
 ## Health and operations
 

@@ -109,6 +109,21 @@ class Engine {
         return;
       }
 
+      // Refuse to start a model that cannot fit, instead of letting the kernel
+      // OOM-kill the engine (or the whole app) mid-load. gpt-oss-20b needs
+      // ~12.8 GB at MXFP4 and gpt-oss-120b ~63 GB; this box has 4 GB, so the
+      // failure would otherwise be a silent hang or a SIGKILL with no clue
+      // which knob to turn.
+      const footprint = checkFootprint();
+      if (!footprint.ok) {
+        this.state = 'error';
+        this.error = footprint.message;
+        console.error('[engine] ' + footprint.message);
+        this._starting = null;
+        return;
+      }
+      if (footprint.warning) console.warn('[engine] ' + footprint.warning);
+
       const args = this._args();
       console.log(`[engine] starting LFM3 (${path.basename(config.model.path)}, ctx=${config.model.context})`);
       const child = spawn(config.engine.bin, args, {
@@ -340,6 +355,55 @@ class Engine {
 }
 
 /**
+ * Will the weights plausibly fit in RAM? llama.cpp needs the file plus the KV
+ * cache and runtime buffers, so the file size alone is not the budget. Compared
+ * against MemAvailable, which is what the kernel will actually hand out.
+ *
+ * MODEL_SKIP_MEMORY_CHECK=1 overrides a refusal, for the odd machine (a shared
+ * box, a model being mmapped from a fast disk) where the estimate is too
+ * pessimistic.
+ */
+function checkFootprint() {
+  if (process.env.MODEL_SKIP_MEMORY_CHECK === '1') return { ok: true };
+  let fileBytes = 0;
+  try {
+    fileBytes = fs.statSync(config.model.path).size;
+  } catch {
+    return { ok: true }; // modelExists() already reported this case
+  }
+  const totalMB = Number(require('os').totalmem() / 1048576);
+  const kvMB = estimateKvCacheMB();
+  const needMB = Math.ceil((fileBytes / 1048576) * 1.05) + kvMB + 512; // + runtime buffers
+  const headroomMB = totalMB - 700; // leave the OS and this process room to live
+
+  if (needMB > headroomMB) {
+    const gb = (n) => `${(n / 1024).toFixed(1)} GB`;
+    return {
+      ok: false,
+      message:
+        `not enough memory for ${path.basename(config.model.path)}: needs about ${gb(needMB)} ` +
+        `(weights ${gb(fileBytes / 1048576)} + KV cache ${gb(kvMB)} + buffers), ` +
+        `this machine has ${gb(totalMB)} total with no swap. ` +
+        `Use a smaller quantisation, raise CTX_SIZE down, or set MODEL_SKIP_MEMORY_CHECK=1 to try anyway.`
+    };
+  }
+  if (needMB > headroomMB * 0.85) {
+    return { ok: true, warning: `tight fit: needs about ${Math.round(needMB)} MB of ${Math.round(totalMB)} MB available` };
+  }
+  return { ok: true };
+}
+
+/** Rough KV-cache size: bytes per token per layer, times the context. */
+function estimateKvCacheMB() {
+  const layers = Number(config.model.layers || 0);
+  const ctx = Number(config.model.context || 8192);
+  if (!layers) return Math.ceil((ctx / 8192) * 512); // assume ~0.5 GB per 8K
+  // heads * headDim * 2 (K and V) * 2 bytes (f16) * layers * ctx
+  const perTokenBytes = layers * 2 * 2 * 128 * 2;
+  return Math.ceil((perTokenBytes * ctx) / 1048576);
+}
+
+/**
  * LFM3 GGUFs carry their own Jinja chat template, so by default we let
  * llama-server use it. Set ENGINE_CHAT_TEMPLATE=lfm3 (or a path) to force the
  * bundled template — useful for base/fine-tuned GGUFs that lost their template.
@@ -363,3 +427,4 @@ function resolvedChatTemplateFile() {
 module.exports = new Engine();
 module.exports.Engine = Engine;
 module.exports.resolvedChatTemplateFile = resolvedChatTemplateFile;
+module.exports.checkFootprint = checkFootprint;
