@@ -62,11 +62,35 @@ const CTX_SIZE = Number(process.env.CTX_SIZE || 4096);
 
 const PASSWORD = process.env.APP_PASSWORD || 'Kosmos@2026';
 const PASSWORD_HASH = sha256(PASSWORD);
-const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const SESSION_SECRET = process.env.SESSION_SECRET || loadOrCreateSecret();
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 const LOGIN_WINDOW_MS = 10 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 10;
+
+// ---------------------------------------------------------------------------
+// Session secret: stable across restarts so logins are not lost on reboot
+// ---------------------------------------------------------------------------
+function loadOrCreateSecret() {
+  const candidates = [path.join(__dirname, '.session-secret'), path.join(require('os').tmpdir(), 'kosmos-session-secret')];
+  for (const file of candidates) {
+    try {
+      if (fs.existsSync(file)) {
+        const value = fs.readFileSync(file, 'utf8').trim();
+        if (value.length >= 32) return value;
+      }
+    } catch {}
+  }
+  const secret = crypto.randomBytes(32).toString('hex');
+  for (const file of candidates) {
+    try {
+      fs.writeFileSync(file, secret, { mode: 0o600 });
+      return secret;
+    } catch {}
+  }
+  console.warn('[session] using an ephemeral secret (logins will not survive a restart)');
+  return secret;
+}
 
 // ---------------------------------------------------------------------------
 // Tiny helpers
@@ -192,8 +216,10 @@ function isAuthed(req) {
   if (typeof auth === 'string' && auth.startsWith('Bearer ')) {
     return verifyToken(auth.slice(7).trim());
   }
+  if (verifyToken(req.headers['x-session-token'])) return true;
   return false;
 }
+
 
 // ---------------------------------------------------------------------------
 // Static files

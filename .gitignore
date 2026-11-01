@@ -15,3 +15,6 @@ llama.cpp/
 .build/
 *.log
 .DS_Store
+
+# session signing secret (auto-generated, keeps logins alive across restarts)
+.session-secret

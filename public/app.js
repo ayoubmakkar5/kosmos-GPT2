@@ -393,8 +393,19 @@
   const currentConv = () => state.conversations.find((c) => c.id === state.currentId);
 
   // Session token fallback (used when cookies are blocked inside preview iframes)
+  // The token lives in memory, in the URL hash (survives reloads even when
+  // storage & cookies are blocked inside a preview iframe) and in storage.
+  function tokenFromHash() {
+    const m = /(?:^#|&)t=([^&]+)/.exec(location.hash || '');
+    return m ? decodeURIComponent(m[1]) : '';
+  }
   function getToken() {
     if (state.token) return state.token;
+    const fromHash = tokenFromHash();
+    if (fromHash) {
+      state.token = fromHash;
+      return fromHash;
+    }
     try {
       return sessionStorage.getItem('kosmos_token') || localStorage.getItem('kosmos_token') || '';
     } catch {
@@ -402,8 +413,12 @@
     }
   }
   function setToken(tok) {
+    state.token = tok || '';
     if (!tok) return;
-    state.token = tok;
+    try {
+      const url = location.pathname + location.search + '#t=' + encodeURIComponent(tok);
+      history.replaceState(null, '', url);
+    } catch {}
     try {
       localStorage.setItem('kosmos_token', tok);
       sessionStorage.setItem('kosmos_token', tok);
@@ -411,6 +426,11 @@
   }
   function clearToken() {
     state.token = '';
+    try {
+      if (/(?:^#|&)t=/.test(location.hash || '')) {
+        history.replaceState(null, '', location.pathname + location.search);
+      }
+    } catch {}
     try {
       localStorage.removeItem('kosmos_token');
       sessionStorage.removeItem('kosmos_token');
@@ -919,6 +939,8 @@
   // -------------------------------------------------------
   (async function boot() {
     applyLang(lang);
+    const urlToken = tokenFromHash();
+    if (urlToken) setToken(urlToken);
     updateSendState();
     try {
       const res = await apiFetch('/api/me');
