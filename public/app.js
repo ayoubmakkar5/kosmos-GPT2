@@ -458,6 +458,7 @@
 
   function newChat() {
     state.currentId = null;
+    rememberCurrent(null);
     messagesEl.innerHTML = '';
     showEmptyState();
     renderHistory();
@@ -495,12 +496,20 @@
     messagesEl.appendChild(wrap);
   }
 
+  function rememberCurrent(id) {
+    try {
+      if (id) localStorage.setItem('kosmos_current', id);
+      else localStorage.removeItem('kosmos_current');
+    } catch {}
+  }
+
   function openConversation(id) {
     const conv = state.conversations.find((c) => c.id === id);
     if (!conv) return;
     state.currentId = id;
+    rememberCurrent(id);
     messagesEl.innerHTML = '';
-    conv.messages.forEach((m) => appendMessage(m.role, m.content, { store: false }));
+    conv.messages.forEach((m) => appendMessage(m.role, m.content));
     renderHistory();
     scrollToBottom();
     closeSidebarOnMobile();
@@ -536,7 +545,7 @@
     messagesEl.appendChild(wrap);
     scrollToBottom();
 
-    if (opts.store !== false && state.currentId) {
+    if (opts.store === true && state.currentId) {
       const conv = currentConv();
       if (conv) {
         conv.messages.push({ role, content });
@@ -591,11 +600,16 @@
       const id = `c_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       state.conversations.push({ id, title: text.slice(0, 60), messages: [], ts: Date.now() });
       state.currentId = id;
+      rememberCurrent(id);
     }
     const conv = currentConv();
-    const payloadMessages = [...conv.messages, { role: 'user', content: text }];
+    if (conv) {
+      conv.messages.push({ role: 'user', content: text });
+      saveConversations();
+    }
+    const payloadMessages = conv ? [...conv.messages] : [{ role: 'user', content: text }];
 
-    appendMessage('user', text);
+    appendMessage('user', text, { store: false });
     inputEl.value = '';
     autoGrow();
     state.streaming = true;
@@ -609,6 +623,7 @@
     state.abort = controller;
     let full = '';
     let pending = false;
+    let sessionExpired = false;
 
     const paint = () => {
       pending = false;
@@ -632,8 +647,14 @@
       });
 
       if (res.status === 401) {
+        // Session expired: keep the typed message so nothing is lost
+        inputEl.value = inputEl.value || text;
+        autoGrow();
+        updateSendState();
         state.authed = false;
         showGate();
+        loginError.textContent =
+          lang === 'ar' ? 'انتهت الجلسة — أدخل كلمة السر للمتابعة' : 'Session expired — enter your password to continue';
         return;
       }
       if (!res.ok || !res.body) {
@@ -679,6 +700,10 @@
                 statsBadge.textContent = `${s.tokPerSec || '—'} tok/s`;
               }
             } else if (evt.error) {
+              if (evt.error === 'unauthorized') {
+                sessionExpired = true;
+                continue;
+              }
               full += full ? `\n\n> ⚠ ${evt.message}` : `⚠ ${evt.message}`;
             }
           }
@@ -698,18 +723,21 @@
         const c = currentConv();
         if (c) {
           c.messages.push({ role: 'assistant', content: stripThinking(full) });
-          if (c.title && c.title.length > 60) c.title = c.title.slice(0, 60);
           saveConversations();
-        }
-        if (!state.currentId) {
-          const id = `c_${Date.now()}`;
-          state.conversations.push({ id, title: text.slice(0, 60), messages: [], ts: Date.now() });
-          state.currentId = id;
         }
         renderHistory();
       }
       updateSendState();
       scrollToBottom();
+      if (sessionExpired) {
+        inputEl.value = text;
+        autoGrow();
+        state.authed = false;
+        showGate();
+        loginError.textContent =
+          lang === 'ar' ? 'انتهت الجلسة — أدخل كلمة السر للمتابعة' : 'Session expired — enter your password to continue';
+        updateSendState();
+      }
     }
   }
 
@@ -757,7 +785,12 @@
     app.classList.remove('hidden');
     loadConversations();
     renderHistory();
-    newChat();
+    let restored = null;
+    try {
+      restored = localStorage.getItem('kosmos_current');
+    } catch {}
+    if (restored && state.conversations.some((c) => c.id === restored)) openConversation(restored);
+    else newChat();
     pollStatus();
   }
 

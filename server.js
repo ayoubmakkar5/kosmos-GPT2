@@ -63,7 +63,7 @@ const CTX_SIZE = Number(process.env.CTX_SIZE || 4096);
 const PASSWORD = process.env.APP_PASSWORD || 'Kosmos@2026';
 const PASSWORD_HASH = sha256(PASSWORD);
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
-const SESSION_TTL_MS = 1000 * 60 * 60 * 12; // 12 hours
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 const LOGIN_WINDOW_MS = 10 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 10;
@@ -242,7 +242,7 @@ function serveStatic(req, res, urlPath) {
     const ext = path.extname(filePath).toLowerCase();
     res.writeHead(200, {
       'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=3600',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer',
       'Content-Security-Policy': "frame-ancestors *",
@@ -529,6 +529,7 @@ async function handleChat(req, res) {
     'X-Accel-Buffering': 'no',
   });
   res.write(': connected\n\n');
+  res.write(`data: ${JSON.stringify({ ready: true })}\n\n`);
 
   let closed = false;
   let firstTokenAt = 0;
@@ -584,7 +585,11 @@ async function handleChat(req, res) {
       closed = true;
       clearInterval(heartbeat);
       console.error('[chat]', err.message);
-      res.write(`data: ${JSON.stringify({ error: 'inference_failed', message: err.message })}\n\n`);
+      const message =
+        /ECONNREFUSED|socket hang up|ECONNRESET/.test(err.message)
+          ? 'The model engine restarted. Please send your request again.'
+          : err.message;
+      res.write(`data: ${JSON.stringify({ error: 'inference_failed', message })}\n\n`);
       res.end();
     }
   );
@@ -631,11 +636,17 @@ const server = http.createServer(async (req, res) => {
     loginSucceeded(ip);
     stats.logins++;
     const token = makeToken();
-    const cookie =
-      `km_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(
-        SESSION_TTL_MS / 1000
-      )}` + (isHttps(req) ? '; Secure' : '');
-    return json(res, 200, { ok: true, token }, { 'Set-Cookie': cookie });
+    const secure = isHttps(req) ? '; Secure' : '';
+    const maxAge = Math.floor(SESSION_TTL_MS / 1000);
+    const cookie = `km_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
+    // SameSite=None keeps the session alive inside embedded preview frames (requires Secure)
+    const cookies = [cookie];
+    if (secure) {
+      cookies.push(
+        `km_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=None; Max-Age=${maxAge}${secure}`
+      );
+    }
+    return json(res, 200, { ok: true, token, expiresIn: maxAge }, { 'Set-Cookie': cookies });
   }
 
   if (p === '/api/logout' && req.method === 'POST') {
