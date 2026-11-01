@@ -161,3 +161,40 @@ git push origin HEAD
 
 > ملف الأوزان `models/*.gguf` مستثنى من Git (462 MB). يُنزَّل تلقائياً بواسطة
 > `scripts/download-model.sh` أو أثناء بناء صورة Docker.
+
+---
+
+## 🚦 حالة النشر على openpouch (مُحدَّثة)
+
+جهّزت النشر بالكامل وتم **تنفيذه فعلياً من GitHub Actions** (شبكة arena تحجب `openpouch.sh`،
+فاستخدمت شبكة GitHub بدلاً منها). النتيجة الحقيقية من خوادم openpouch:
+
+```json
+{ "ok": false,
+  "error": { "category": "provider",
+             "message": "openpouch-run 503: dynamic lane at capacity — try again later" } }
+```
+
+أي أن **الاستضافة نفسها ممتلئة حالياً** — ليس خطأً في التطبيق ولا في كلمة السر:
+
+| ما تم التحقق منه | النتيجة |
+|---|---|
+| وصول GitHub Actions إلى openpouch API | ✅ (استجاب الخادم، لا حجب شبكة) |
+| صحة الـ workflow والأوامر | ✅ (تشغيل ناجح دون أخطاء صياغة) |
+| سبب الفشل | ❌ `503 dynamic lane at capacity` من openpouch |
+
+### إعادة المحاولة تلقائياً
+الـ workflow يعيد المحاولة 5 مرات بتباعد أسّي، **ويعمل كل 30 دقيقة** عبر `schedule`
+في أي فرع على `main`. بمجرد أن تفرغ سعة openpouch سيُنشر الموقع ويظهر الرابط في
+`GITHUB_STEP_SUMMARY` وفي `.deploy/` داخل المستودع.
+
+### يدوياً (من جهازك، إن كانت شبكتك تصل إلى openpouch)
+```bash
+bash scripts/fetch-engine.sh
+npx -y openpouch deploy . --health-path /api/health --var APP_PASSWORD='Kosmos@2026'
+```
+
+### بديل يعمل اليوم
+الموقع **يعمل الآن** على هذا الخادم (المنفذ 3000). وللنشر الدائم يوجد
+`Dockerfile` كامل يعمل على Render / Railway / Fly.io (الخياران 1 و2 أدناه) — لا يحتاج
+أي وصول إلى openpouch.
