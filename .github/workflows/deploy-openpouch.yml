@@ -2,7 +2,7 @@ name: Deploy to openpouch
 
 on:
   push:
-    branches: [main, 'arena/**']
+    branches: [main]
     paths:
       - 'server.js'
       - 'public/**'
