@@ -7,12 +7,13 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "build:llama": "bash scripts/build-llama.sh",
+    "build:engine": "bash scripts/build-engine.sh",
     "download:model": "bash scripts/download-model.sh",
     "test": "node tests/e2e.mjs && node tests/hard.mjs"
   },
   "engines": {
     "node": ">=18"
   },
-  "licenses": "MIT"
+  "licenses": "MIT",
+  "dependencies": {}
 }
