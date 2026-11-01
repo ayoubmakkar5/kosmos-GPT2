@@ -250,7 +250,14 @@ async function apiLogin(req, res) {
   sendJSON(res, 200, {
     ok: true,
     expiresAt: session.expiresAt,
-    cookie: policy
+    cookie: policy,
+    // Handed back so a framed page can authenticate without a cookie. It is
+    // the same opaque session token the cookie carries; the client keeps it in
+    // sessionStorage and sends it as a bearer header.
+    token: session.token,
+    // Lets the client tell "cookie stored" from "cookie silently dropped" and
+    // fall back to the token when needed.
+    framed
   }, {
     'set-cookie': serializeCookie(config.session.cookie, session.token, { maxAge, ...policy })
   });
@@ -653,6 +660,8 @@ async function handleApi(req, res, session) {
   if (p === '/me') {
     return sendJSON(res, 200, {
       authed: true,
+      // Tells the client whether to keep its bearer-token fallback.
+      via: session.via,
       cookie: cookiePolicy(req),
       expiresAt: session.expiresAt,
       model: engine.info(),
@@ -708,6 +717,36 @@ async function handleApi(req, res, session) {
   return sendJSON(res, 404, { error: 'not_found' });
 }
 
+/**
+ * Resolve the caller's session from either transport.
+ *
+ * The cookie is the normal path. The bearer token exists because browsers now
+ * block third-party cookies outright inside iframes, so when the app is
+ * embedded (an arena preview pane) the cookie is never stored and every request
+ * is anonymous. A cross-site frame can still hold a token in its own memory,
+ * but it cannot use localStorage (the frame is third-party there too) — so the
+ * token lives in sessionStorage, which *is* partitioned per frame origin and
+ * therefore available.
+ */
+function sessionFrom(req) {
+  const cookieToken = parseCookies(req.headers.cookie)[config.session.cookie];
+  if (cookieToken) {
+    const s = sessions.get(cookieToken);
+    if (s) return { ...s, via: 'cookie' };
+  }
+  const auth = String(req.headers.authorization || '');
+  if (auth.startsWith('Bearer ')) {
+    const s = sessions.get(auth.slice(7).trim());
+    if (s) return { ...s, via: 'token' };
+  }
+  const header = req.headers['x-kosmos-session'];
+  if (header) {
+    const s = sessions.get(String(header).trim());
+    if (s) return { ...s, via: 'token' };
+  }
+  return null;
+}
+
 async function handler(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const pathname = url.pathname;
@@ -721,8 +760,7 @@ async function handler(req, res) {
 
   try {
     if (pathname.startsWith('/api/') || pathname === '/api') {
-      const session = sessions.get(parseCookies(req.headers.cookie)[config.session.cookie]);
-      return await handleApi(req, res, session);
+      return await handleApi(req, res, sessionFrom(req));
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       return sendJSON(res, 405, { error: 'method_not_allowed' });

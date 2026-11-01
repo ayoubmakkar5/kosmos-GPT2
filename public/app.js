@@ -190,11 +190,31 @@ function toast(msg, ms = 2200) {
   toast._t = setTimeout(() => { el.hidden = true; }, ms);
 }
 
+/* ───────────────────────────────────────────────── session token transport ─
+ * Browsers block third-party cookies inside an iframe, and no SameSite value
+ * changes that — so when the app is embedded the cookie is simply never
+ * stored. The server therefore also returns the session token, which we keep in
+ * sessionStorage (per-frame-origin, so it is available even cross-site) and
+ * send as a bearer header. In a normal top-level tab the cookie works and the
+ * token is simply never set.
+ */
+const TOKEN_KEY = 'kosmos.session';
+function getToken() {
+  try { return sessionStorage.getItem(TOKEN_KEY) || null; } catch { return null; }
+}
+function setToken(token) {
+  try { token ? sessionStorage.setItem(TOKEN_KEY, token) : sessionStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
+}
+function authHeaders() {
+  const token = getToken();
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
 async function api(path, opts = {}) {
   const res = await fetch(`/api${path}`, {
     credentials: 'same-origin',
-    headers: { 'content-type': 'application/json', ...(opts.headers || {}) },
-    ...opts
+    ...opts,
+    headers: { 'content-type': 'application/json', ...authHeaders(), ...(opts.headers || {}) }
   });
   const text = await res.text();
   let json = null;
@@ -796,7 +816,7 @@ async function send(presetText) {
 
     const res = await fetch('/api/chat', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...authHeaders() },
       credentials: 'same-origin',
       signal: controller.signal,
       body: JSON.stringify({
@@ -1199,21 +1219,27 @@ function wireGlobalEvents() {
       let framed = false;
       try { framed = window.self !== window.top; } catch { framed = true; }
 
-      await api('/login', {
+      const login = await api('/login', {
         method: 'POST',
         body: JSON.stringify({ password: $('#password').value, persistent: $('#persistent').checked, framed })
       });
       $('#password').value = '';
 
-      // Trust the server's answer only if the session cookie actually survived.
-      // A blocked third-party cookie makes login "succeed" and then bounce
-      // straight back here, which used to look like a wrong password.
+      // Keep the token only as a fallback: if the cookie survived, the cookie is
+      // the better transport (HttpOnly, survives a reload). Store it up front
+      // anyway and drop it if /me proves the cookie works.
+      if (login && login.token) setToken(login.token);
+
+      // Confirm the session actually carries, and learn which transport won.
+      // If the bearer token is what /me needed, keep it; if the cookie worked we
+      // can forget the fallback so a later top-level tab behaves normally.
       const session = await api('/me').catch(() => null);
       if (!session || !session.authed) {
         errBox.hidden = false;
         errBox.textContent = t.cookieBlocked;
         return;
       }
+      if (session.via === 'cookie') setToken(null);
 
       state.model = session.model;
       showApp();
@@ -1236,6 +1262,7 @@ function wireGlobalEvents() {
   // logout
   $('#logoutBtn').addEventListener('click', async () => {
     try { await api('/logout', { method: 'POST' }); } catch { /* ignore */ }
+    setToken(null);
     showGate();
   });
 

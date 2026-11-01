@@ -87,5 +87,55 @@ const chat = await (await fetch(`${BASE}/api/chat`, {
 })).text();
 check('chat streams inside the frame', chat.includes('event: done'), chat.slice(0, 80));
 
+// 6. REGRESSION: browsers block third-party cookies in iframes outright, so no
+// SameSite value can save the cookie transport. The login also returns the
+// session token, which the page keeps in sessionStorage and sends as a bearer
+// header. These checks prove the token alone is enough — no cookie at all.
+const tokenLogin = await fetch(`${BASE}/api/login`, {
+  method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-proto': 'https' },
+  body: JSON.stringify({ password: 'Kosmos@2026', framed: true })
+});
+const tokenBody = await tokenLogin.json();
+check('login returns a session token', typeof tokenBody.token === 'string' && tokenBody.token.length > 20, String(tokenBody.token).slice(0, 12));
+check('login reports it was framed', tokenBody.framed === true);
+
+// No cookie header here on purpose: this is the blocked-cookie browser.
+const bearer = { authorization: `Bearer ${tokenBody.token}`, ...H };
+const meByToken = await fetch(`${BASE}/api/me`, { headers: bearer });
+const meByTokenBody = await meByToken.json();
+check('token alone authenticates /api/me', meByToken.status === 200 && meByTokenBody.authed === true, `status ${meByToken.status}`);
+check('/api/me reports the token transport', meByTokenBody.via === 'token', String(meByTokenBody.via));
+
+const convByToken = await (await fetch(`${BASE}/api/conversations`, {
+  method: 'POST', headers: { 'content-type': 'application/json', ...bearer },
+  body: JSON.stringify({ mode: 'chat' })
+})).json();
+check('token alone can create a conversation', Boolean(convByToken.id));
+
+const chatByToken = await (await fetch(`${BASE}/api/chat`, {
+  method: 'POST', headers: { 'content-type': 'application/json', ...bearer },
+  body: JSON.stringify({ conversationId: convByToken.id, message: 'Say OK', mode: 'chat', lang: 'en', maxTokens: 20 })
+})).text();
+check('token alone streams a reply', chatByToken.includes('event: done'), chatByToken.slice(0, 60));
+
+// The x-kosmos-session header is the same transport by another name.
+const byHeader = await fetch(`${BASE}/api/me`, { headers: { 'x-kosmos-session': tokenBody.token, ...H } });
+check('x-kosmos-session header also authenticates', byHeader.status === 200);
+
+// A garbage or revoked token must not authenticate.
+const badToken = await fetch(`${BASE}/api/me`, { headers: { authorization: 'Bearer not-a-real-token', ...H } });
+check('invalid token is rejected', badToken.status === 401, `status ${badToken.status}`);
+
+// Logging out with a bearer token must kill that session for good.
+await fetch(`${BASE}/api/logout`, { method: 'POST', headers: bearer });
+const afterLogout = await fetch(`${BASE}/api/me`, { headers: bearer });
+check('logout revokes the bearer session', afterLogout.status === 401, `status ${afterLogout.status}`);
+
+// The cookie transport must still beat the token when both are present, so a
+// normal top-level tab never depends on the fallback.
+const viaCookie = await fetch(`${BASE}/api/me`, { headers: { cookie, ...H } });
+check('/api/me still works by cookie', viaCookie.status === 200);
+check('cookie transport is preferred', (await viaCookie.json()).via === 'cookie');
+
 console.log(`\n${pass}/${pass + fail} checks passed`);
 process.exit(fail ? 1 : 0);
