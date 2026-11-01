@@ -57,6 +57,22 @@ function nameFromFile(file) {
   return base.replace(/[-_.](Q\d.*|iq\d.*|f16|bf16|f32|fp16)$/i, '') || base;
 }
 
+/**
+ * Who trained the weights, inferred from the file name. Reported to the UI, so
+ * it must not be a constant: this said "Liquid AI" for every model, which
+ * attributed Qwen3 — an Alibaba model — to Liquid AI.
+ */
+function vendorFromFile(file) {
+  const name = nameFromFile(file);
+  if (/qwen/i.test(name)) return 'Alibaba (Qwen)';
+  if (/lfm/i.test(name)) return 'Liquid AI';
+  if (/llama|mistral|mixtral|gemma|phi|deepseek|smollm/i.test(name)) {
+    const m = name.match(/llama|mistral|mixtral|gemma|phi|deepseek|smollm/i);
+    return m[0][0].toUpperCase() + m[0].slice(1).toLowerCase();
+  }
+  return 'unknown';
+}
+
 const config = {
   root: ROOT,
   publicDir: path.join(ROOT, 'public'),
@@ -80,11 +96,15 @@ const config = {
 
   model: {
     path: MODEL_DEFAULT,
-    // Show the truth: name comes from the file actually loaded, not a guess
+    // Show the truth: name comes from the file actually loaded, not a guess.
+    // The vendor is derived from that name for the same reason — this was
+    // hardcoded to "Liquid AI" and so labelled Qwen3, an Alibaba model, as
+    // Liquid AI's. A model card that lies about itself is worse than no card.
     name: process.env.MODEL_NAME || nameFromFile(MODEL_DEFAULT),
-    vendor: 'Liquid AI',
+    vendor: process.env.MODEL_VENDOR || vendorFromFile(MODEL_DEFAULT),
     quant: process.env.MODEL_QUANT || 'Q4_K_M',
-    params: process.env.MODEL_PARAMS || (/lfm3/i.test(MODEL_DEFAULT) ? '1.73B' : '0.6B'),
+    // Qwen3-0.6B is 0.752B total / 0.596B non-embedding, hence the "0.6B".
+    params: process.env.MODEL_PARAMS || (/lfm3/i.test(MODEL_DEFAULT) ? '1.73B' : /qwen3/i.test(MODEL_DEFAULT) ? '0.6B' : 'unknown'),
     nativeContext: num(process.env.MODEL_NATIVE_CTX, 262144),
     // runtime context: 8K by default — 256K needs ~1.6 GB of KV cache alone
     context: num(process.env.CTX_SIZE, 8192),
