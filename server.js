@@ -702,6 +702,13 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { ...stats, uptime: (Date.now() - stats.started) / 1000 });
   }
 
+  // --- API: unknown endpoints / wrong methods ------------------------------
+  if (p.startsWith('/api/')) {
+    const known = ['/api/health', '/api/login', '/api/logout', '/api/me', '/api/chat', '/api/stats'];
+    if (known.includes(p)) return json(res, 405, { error: 'method_not_allowed' });
+    return json(res, 404, { error: 'not_found' });
+  }
+
   // --- Pages ---------------------------------------------------------------
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     return json(res, 405, { error: 'method_not_allowed' });
