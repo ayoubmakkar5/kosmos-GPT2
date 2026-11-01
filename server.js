@@ -652,6 +652,26 @@ async function handleApi(req, res, session) {
   if (p === '/login' && method === 'POST') return apiLogin(req, res);
   if (p === '/logout' && method === 'POST') return apiLogout(req, res, session);
 
+  // Public and body-only: the browser reports its own condition here so it can
+  // be read in the server log. A preview window cannot be opened or inspected
+  // from the sandbox, so this is the channel that carries "what my browser
+  // saw" out to where it can actually be looked at. It accepts nothing that
+  // grants access — it is a write-only diagnostic sink, capped in size.
+  if (p === '/client-log' && method === 'POST') {
+    let body;
+    try {
+      body = await readBody(req, 8192);
+    } catch {
+      return sendJSON(res, 413, { error: 'too_large' });
+    }
+    const scrub = (v) => String(v).replace(/[\r\n]+/g, ' ').slice(0, 400);
+    const fields = ['screen', 'framed', 'origin', 'top', 'cookieWritable', 'localStorage', 'sessionStorage', 'token', 'via', 'err', 'ua']
+      .filter((k) => body && body[k] !== undefined && body[k] !== null)
+      .map((k) => `${k}=${scrub(body[k])}`);
+    console.log(`[browser] ${fields.join(' | ') || '(empty)'}`);
+    return sendJSON(res, 204, null);
+  }
+
   // --- everything below needs a session
   if (!session) {
     return sendJSON(res, 401, { error: 'unauthorized', message: 'Sign in required', messageAr: 'يجب تسجيل الدخول' });
@@ -729,10 +749,15 @@ async function handleApi(req, res, session) {
  * therefore available.
  */
 function sessionFrom(req) {
+  // `seen` records *why* authentication failed, which the log needs: a browser
+  // that presents a cookie but no token is a different world from one that
+  // presents nothing at all, and the two demand opposite fixes.
   const cookieToken = parseCookies(req.headers.cookie)[config.session.cookie];
   if (cookieToken) {
     const s = sessions.get(cookieToken);
     if (s) return { ...s, via: 'cookie' };
+    req.authSeen = 'cookie-sent-but-unknown';
+    return null;
   }
   const auth = String(req.headers.authorization || '');
   if (auth.startsWith('Bearer ')) {
@@ -744,6 +769,7 @@ function sessionFrom(req) {
     const s = sessions.get(String(header).trim());
     if (s) return { ...s, via: 'token' };
   }
+  if (header || auth) req.authSeen = 'token-sent-but-unknown';
   return null;
 }
 
@@ -819,7 +845,7 @@ async function handler(req, res) {
       res.on('finish', () => {
         if (!LOG_REQUESTS) return;
         const open = pathname === '/api/login' || pathname === '/api/logout' || pathname === '/api/health';
-        const via = session ? session.via : (open ? 'public' : 'anonymous');
+        const via = session ? session.via : (req.authSeen || (open ? 'public' : 'anonymous'));
         const note = !session && !open ? ' (no session → ' + res.statusCode + ')' : '';
         console.log(`[auth] ${req.method} ${pathname} -> ${via}${note}`);
       });

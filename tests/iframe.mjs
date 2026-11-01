@@ -162,5 +162,44 @@ const fw = await foreignWithToken.json();
 const foreignMe = await fetch(`${BASE}/api/me`, { headers: { origin: 'null', authorization: `Bearer ${fw.token}` } });
 check('opaque-origin page can authenticate by token', foreignMe.status === 200, `status ${foreignMe.status}`);
 
+// 8. REGRESSION: a preview proxy may not forward `authorization`, which left the
+// browser holding a valid token while the server saw an anonymous request. The
+// client now sends the token under a second, custom header too, so either one
+// surviving is enough.
+const both = await fetch(`${BASE}/api/login`, {
+  method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-proto': 'https' },
+  body: JSON.stringify({ password: 'Kosmos@2026', framed: true })
+});
+const bj = await both.json();
+const viaCustom = await fetch(`${BASE}/api/me`, { headers: { 'x-kosmos-session': bj.token } });
+check('token travels on x-kosmos-session alone', viaCustom.status === 200, `status ${viaCustom.status}`);
+
+// 9. The diagnostic sink must accept a report without a session (it is how a
+// framed browser explains itself) but must never grant anything.
+const diag = await fetch(`${BASE}/api/client-log`, {
+  method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ screen: 'gate', cookieWritable: 'silently-dropped', err: 'probe' })
+});
+check('client-log accepts an anonymous report', diag.status === 204, `status ${diag.status}`);
+// An oversized report is refused. The server cuts the socket as soon as the
+// cap is crossed, so the client may see either 413 or a connection error;
+// what matters is that nothing is written to the log.
+let bigRefused = false;
+let bigDetail = '';
+try {
+  const tooBig = await fetch(`${BASE}/api/client-log`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ err: 'x'.repeat(20000) })
+  });
+  bigRefused = tooBig.status === 413;
+  bigDetail = `status ${tooBig.status}`;
+} catch (err) {
+  bigRefused = true; // socket destroyed mid-body, which is also a refusal
+  bigDetail = err.code || err.name || 'connection error';
+}
+check('client-log refuses an oversized report', bigRefused, bigDetail);
+const afterDiag = await fetch(`${BASE}/api/me`);
+check('a diagnostic report grants no session', afterDiag.status === 401, `status ${afterDiag.status}`);
+
 console.log(`\n${pass}/${pass + fail} checks passed`);
 process.exit(fail ? 1 : 0);

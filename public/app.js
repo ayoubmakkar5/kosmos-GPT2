@@ -243,7 +243,14 @@ function setToken(token) {
 }
 function authHeaders() {
   const token = getToken();
-  return token ? { authorization: `Bearer ${token}` } : {};
+  if (!token) return {};
+  // Both transports, deliberately. A preview proxy in front of the app is not
+  // obliged to forward `authorization` (it is not safelisted the way
+  // content-type is), and one was observed dropping it — the browser held a
+  // valid token while the server saw an anonymous request. A custom
+  // x-kosmos-session header is just as unlikely to be stripped and costs one
+  // extra header, so send both and let whichever survives authenticate.
+  return { authorization: `Bearer ${token}`, 'x-kosmos-session': token };
 }
 
 async function api(path, opts = {}) {
@@ -1269,11 +1276,26 @@ function wireGlobalEvents() {
       // Confirm the session actually carries, and learn which transport won.
       // If the bearer token is what /me needed, keep it; if the cookie worked we
       // can forget the fallback so a later top-level tab behaves normally.
-      const session = await api('/me').catch(() => null);
+      // A rejected /me is not proof that the session failed: the token may
+      // simply have been dropped in transit (a proxy that does not forward the
+      // header), and the retry below recovers from exactly that. Only give up
+      // when the session is definitively gone.
+      let session = await api('/me').catch((err) => ({ __status: err.status || 0 }));
       if (!session || !session.authed) {
-        errBox.hidden = false;
-        errBox.textContent = t.cookieBlocked;
-        return;
+        const firstStatus = session && session.__status;
+        // One immediate retry: the browser may have raced the Set-Cookie, or a
+        // proxy may have swallowed this particular request.
+        await new Promise((r) => setTimeout(r, 250));
+        session = await api('/me').catch((err) => ({ __status: err.status || 0 }));
+        if (!session || !session.authed) {
+          errBox.hidden = false;
+          errBox.textContent = t.cookieBlocked;
+          reportDiagnostics({
+            err: `login ok but /me unauthenticated twice (first=${firstStatus}, retry=${session ? session.__status : 'none'})`,
+            via: session && session.via ? String(session.via) : 'no /me response'
+          });
+          return;
+        }
       }
       if (session.via === 'cookie') setToken(null);
 
@@ -1451,12 +1473,65 @@ function readPrompts() {
   }
 }
 
+/* ─────────────────────────────────────────────────────── browser diagnostics ─
+ * The client reports its own condition to the server, which logs it. This is
+ * the only channel that carries "what the browser actually saw" out of an
+ * embedded preview, since that window cannot be opened or inspected from the
+ * outside. It fires on failure, never on success, and sends no secret: no
+ * password, no token value, only booleans and messages.
+ */
+function cookieProbe() {
+  try {
+    document.cookie = 'kosmos_probe=1; path=/; SameSite=Lax';
+    const ok = document.cookie.includes('kosmos_probe=1');
+    document.cookie = 'kosmos_probe=; path=/; Max-Age=0';
+    return ok ? 'writable' : 'silently-dropped';
+  } catch { return 'throws'; }
+}
+function storageProbe(store) {
+  try {
+    window[store].setItem('kosmos_probe', '1');
+    window[store].removeItem('kosmos_probe');
+    return 'works';
+  } catch { return 'throws'; }
+}
+function reportDiagnostics(extra = {}) {
+  try {
+    const payload = {
+      screen: document.body.dataset.screen || 'unknown',
+      framed: (() => { try { return String(window.self !== window.top); } catch { return 'true (throws)'; } })(),
+      origin: window.origin,
+      top: (() => { try { return window.top.location.origin; } catch { return 'cross-origin (unreadable)'; } })(),
+      cookieWritable: cookieProbe(),
+      localStorage: storageProbe('localStorage'),
+      sessionStorage: storageProbe('sessionStorage'),
+      token: getToken() ? 'present' : 'absent',
+      ua: navigator.userAgent.slice(0, 120),
+      ...extra
+    };
+    fetch('/api/client-log', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+      keepalive: true
+    }).catch(() => {});
+  } catch { /* a broken reporter must never break the app */ }
+}
+
 /* ────────────────────────────────────────────────────────────────────── boot */
 // A tiny debug handle: inspect the client from the console, and lets the
 // automated UI test assert on real state instead of guessing from the DOM.
-window.kosmos = { state, renderMarkdown, I18N };
+window.kosmos = { state, renderMarkdown, I18N, reportDiagnostics };
 
 async function boot() {
+  // If the app is still on its loading screen 6s after start, something threw
+  // before boot finished. Report it instead of leaving a silent blank window.
+  const stuck = setTimeout(() => {
+    if ((document.body.dataset.screen || 'loading') === 'loading') {
+      reportDiagnostics({ err: 'boot did not finish: still on loading screen' });
+    }
+  }, 6000);
+
   applyTheme();
   applyLang();
   wireGlobalEvents();
@@ -1464,6 +1539,20 @@ async function boot() {
   updateWelcome();
   await checkAuth();
   pollModel();
+  clearTimeout(stuck);
 }
 
-boot();
+// Uncaught errors and failed requests are exactly the evidence needed when the
+// preview misbehaves, so forward a compact description of them.
+window.addEventListener('error', (e) => {
+  reportDiagnostics({ err: `${e.message} @ ${e.filename || '?'}:${e.lineno || 0}` });
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const r = e.reason;
+  reportDiagnostics({ err: `unhandled rejection: ${(r && (r.message || r)) || 'unknown'}` });
+});
+
+boot().catch((err) => {
+  reportDiagnostics({ err: `boot failed: ${err && err.message}` });
+  showGate();
+});
