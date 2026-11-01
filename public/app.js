@@ -25,8 +25,8 @@ const I18N = {
     modeExplain: 'شرح',
     modeDebug: 'تصحيح',
     welcomeTitle: 'كيف أساعدك اليوم؟',
-    welcomeSub: 'نموذج LFM3-1.7B محلي — بلا واجهات خارجية',
-    welcomeSubLong: 'محادثة، شرح، برمجة وتحليل — كل شيء يعمل محلياً بنموذج LFM3-1.7B من Liquid AI.',
+    welcomeSub: 'محلي على خادمك — بلا واجهات خارجية',
+    welcomeSubLong: 'محادثة، شرح، برمجة وتحليل — كل شيء يعمل محلياً على خادمك بلا واجهات خارجية.',
     placeholder: 'اكتب رسالتك…',
     hint: 'Enter للإرسال · Shift+Enter لسطر جديد',
     you: 'أنت',
@@ -40,6 +40,7 @@ const I18N = {
     thinking: 'يفكر…',
     stopped: 'توقف',
     emptyChats: 'لا محادثات بعد',
+    untitled: 'محادثة جديدة',
     delete: 'حذف',
     newProject: 'مشروع جديد',
     projectName: 'اسم المشروع',
@@ -88,8 +89,8 @@ const I18N = {
     modeExplain: 'Explain',
     modeDebug: 'Debug',
     welcomeTitle: 'How can I help today?',
-    welcomeSub: 'LFM3-1.7B running locally — no external APIs',
-    welcomeSubLong: 'Chat, explain, code and analyse — all running locally on Liquid AI LFM3-1.7B.',
+    welcomeSub: 'running locally — no external APIs',
+    welcomeSubLong: 'Chat, explain, code and analyse — everything runs locally on your own server.',
     placeholder: 'Send a message…',
     hint: 'Enter to send · Shift+Enter for a new line',
     you: 'You',
@@ -103,6 +104,7 @@ const I18N = {
     thinking: 'Thinking…',
     stopped: 'Stopped',
     emptyChats: 'No chats yet',
+    untitled: 'New chat',
     delete: 'Delete',
     newProject: 'New project',
     projectName: 'Project name',
@@ -469,6 +471,8 @@ async function pollModel() {
     const health = await api('/health');
     state.model = health.model;
     updateModelBadge();
+    // refresh the header now that we know which checkpoint is really loaded
+    setMode(state.mode, { silent: false });
     if (!health.model.ready && health.model.state !== 'error') setTimeout(pollModel, 2500);
   } catch { /* ignore */ }
 }
@@ -492,7 +496,7 @@ function renderConversationList() {
     const row = document.createElement('div');
     row.className = 'conv-item' + (conv.id === state.currentId ? ' is-active' : '');
     row.dataset.id = conv.id;
-    row.innerHTML = `<span class="title">${esc(conv.title || 'New chat')}</span>` +
+    row.innerHTML = `<span class="title">${esc(conv.title || t.untitled)}</span>` +
       `<button class="kill" type="button" data-act="delete-conv" data-id="${conv.id}" title="${t.delete}">✕</button>`;
     row.addEventListener('click', (e) => {
       if (e.target.closest('[data-act="delete-conv"]')) return;
@@ -540,7 +544,9 @@ function newChat() {
   state.mode = 'chat';
   setMode('chat', { silent: true });
   $('#chatTitle').textContent = 'Kosmos AI';
-  $('#chatSub').textContent = t.welcomeSub;
+  $('#chatSub').textContent = state.model
+    ? `${state.model.name} — ${t.welcomeSub}`
+    : t.welcomeSub;
   $('#messages').innerHTML = '';
   renderAttachments();
   updateWelcome();
@@ -640,8 +646,9 @@ function setMode(mode, { silent = false } = {}) {
   state.mode = mode;
   $$('.mode-btn').forEach((b) => b.classList.toggle('is-active', b.dataset.mode === mode));
   if (!silent) {
+    const modelName = state.model?.name || 'LFM3-1.7B';
     const subs = {
-      chat: { ar: 'نموذج LFM3-1.7B محلي — بلا واجهات خارجية', en: 'LFM3-1.7B running locally — no external APIs' },
+      chat: { ar: `${modelName} — محلي بلا واجهات خارجية`, en: `${modelName} running locally — no external APIs` },
       code: { ar: 'وضع توليد الكود — اكتب ما تريد بناءه', en: 'Code mode — describe what to build' },
       explain: { ar: 'وضع الشرح — مفاهيم بأسلوب مبسّط', en: 'Explain mode — concepts, made simple' },
       debug: { ar: 'وضع التصحيح — ألصق الخطأ أو الكود', en: 'Debug mode — paste the error or code' }
@@ -746,7 +753,23 @@ async function send(presetText) {
   rememberPrompt(text, state.mode);
 
   try {
+    const isNewConversation = !state.currentId;
     const cid = await ensureConversation();
+
+    // The server renames a fresh conversation after its first message, but only
+    // in the `done` event — until then the sidebar would show the untitled
+    // placeholder next to a message that identifies it. Adopt the same title the
+    // server will derive, so the row never changes under the user mid-stream.
+    if (isNewConversation) {
+      const seedTitle = text.replace(/\s+/g, ' ').trim();
+      const provisional = seedTitle.length > 52 ? `${seedTitle.slice(0, 52)}…` : seedTitle;
+      const row = state.conversations.find((c) => c.id === cid);
+      if (row && provisional) {
+        row.title = provisional;
+        $('#chatTitle').textContent = provisional;
+        renderConversationList();
+      }
+    }
 
     // optimistic user bubble
     state.messages.push({ id: uid(), role: 'user', content: text, attachments: atts.map((a) => ({ name: a.name, kind: a.kind, size: a.size })) });
@@ -933,6 +956,8 @@ function renderProjectsList() {
 }
 
 function openProjectModal(pid) {
+  if (!$('#app') || $('#app').hidden) return; // never over the login gate
+  if (pid && !state.projects.some((p) => p.id === pid)) return;
   const project = state.projects.find((p) => p.id === pid) || null;
   const modal = $('#projectModal');
   const body = $('#projectBody');

@@ -46,6 +46,11 @@ html[data-theme="light"] {
 
 * { box-sizing: border-box; }
 
+/* A `display` declaration on a class beats the UA rule for [hidden], which is
+   how the projects modal once painted over the login screen. This makes
+   `hidden` authoritative everywhere. */
+[hidden] { display: none !important; }
+
 html, body {
   height: 100%;
   margin: 0;
@@ -208,11 +213,17 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   display: grid;
   grid-template-columns: var(--side) minmax(0, 1fr);
   height: 100%;
+  min-width: 0;
 }
+
+.app > * { min-width: 0; }
 
 .app.has-artifact { grid-template-columns: var(--side) minmax(0, 1fr) minmax(360px, 42%); }
 
 [dir="rtl"] .app { grid-template-columns: var(--side) minmax(0, 1fr); }
+/* must come AFTER the RTL rule above, or the artifact panel falls to a second
+   row in Arabic instead of becoming a third column */
+[dir="rtl"] .app.has-artifact { grid-template-columns: var(--side) minmax(0, 1fr) minmax(360px, 42%); }
 
 .sidebar {
   display: flex;
@@ -225,6 +236,8 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 }
 
 .sidebar-top { display: flex; align-items: center; justify-content: space-between; }
+/* in RTL the brand belongs on the inline-start (right) like every other row */
+[dir="rtl"] .sidebar-top { flex-direction: row-reverse; }
 
 .brand {
   display: flex;
@@ -356,6 +369,12 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 /* ───────────────────────────────────────────────────────────────── main ── */
 .main {
   display: grid;
+  /* An implicit `auto` column would be sized by the widest child's min-content
+     — the topbar title is `nowrap`, so the column grew to the full conversation
+     title (~729px) and spilled out of its own grid area, painting over the
+     artifact panel. An explicit minmax(0, 1fr) track keeps the column exactly
+     as wide as the area the outer app grid gave it. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
@@ -376,7 +395,14 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 
 .topbar-title { flex: 1; min-width: 0; }
 .topbar-title h2 { margin: 0; font-size: 14.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.topbar-title p { margin: 0; font-size: 11.5px; color: var(--text-faint); }
+.topbar-title p {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .mode-switch {
   display: flex;
@@ -419,7 +445,12 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .mobile-only { display: none; }
 
 /* ──────────────────────────────────────────────────────────── messages ── */
-.chat-scroll { overflow-y: auto; min-height: 0; scroll-behavior: smooth; }
+.chat-scroll {
+  overflow-y: auto;
+  overflow-x: hidden;      /* horizontal scrolling belongs to code blocks only */
+  min-height: 0;
+  scroll-behavior: smooth;
+}
 
 .welcome { display: grid; place-items: center; min-height: 100%; padding: 40px 20px; }
 .welcome-inner { text-align: center; max-width: 640px; animation: rise 0.5s ease; }
@@ -448,12 +479,15 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .chip:hover { color: var(--text); border-color: var(--accent); background: var(--accent-soft); transform: translateY(-1px); }
 
 .messages {
-  max-width: 780px;
+  max-width: min(780px, 100%);
   margin: 0 auto;
   padding: 26px 20px 8px;
   display: grid;
   gap: 22px;
+  min-width: 0;
 }
+
+.messages > *, .msg > *, .assistant-body { min-width: 0; max-width: 100%; }
 
 .msg { display: grid; gap: 7px; animation: rise 0.3s ease; }
 .msg.user { justify-items: end; }
@@ -486,13 +520,14 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   border-start-end-radius: 6px;
   padding: 11px 15px;
   max-width: min(640px, 88%);
+  min-width: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 [dir="rtl"] .user-bubble { border-start-end-radius: 16px; border-start-start-radius: 6px; }
 
-.assistant-body { padding-inline-start: 27px; overflow-wrap: anywhere; }
+.assistant-body { padding-inline-start: 27px; overflow-wrap: anywhere; min-width: 0; }
 .assistant-body > :first-child { margin-top: 0; }
 .assistant-body > :last-child { margin-bottom: 0; }
 
@@ -529,6 +564,8 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   overflow: hidden;
   margin: 0 0 12px;
   background: var(--bg-elev);
+  max-width: 100%;
+  min-width: 0;
 }
 
 .code-head {
@@ -705,6 +742,10 @@ html[data-theme="light"] .err-note { color: #b42318; }
 
 .composer textarea {
   flex: 1;
+  /* a textarea carries a default intrinsic width (cols≈20) that acts as its
+     automatic min-width, so without this the composer — and with it the chat
+     column — refuses to shrink below ~420px on a phone */
+  min-width: 0;
   border: 0;
   outline: none;
   resize: none;
@@ -748,7 +789,13 @@ html[data-theme="light"] .err-note { color: #b42318; }
   font-size: 11px;
   color: var(--text-faint);
   padding: 0 6px;
+  flex-wrap: wrap;
 }
+
+.composer-foot > span { white-space: nowrap; }
+
+/* numbers stay left-to-right even inside an RTL line */
+#stats { direction: ltr; unicode-bidi: isolate; font-family: var(--mono); }
 
 /* ───────────────────────────────────────────────────────────── artifacts ── */
 .artifact {
@@ -913,7 +960,8 @@ html[data-theme="light"] .err-note { color: #b42318; }
 
 /* ────────────────────────────────────────────────────────────── responsive ── */
 @media (max-width: 1080px) {
-  .app.has-artifact { grid-template-columns: var(--side) minmax(0, 1fr); }
+  .app.has-artifact,
+  [dir="rtl"] .app.has-artifact { grid-template-columns: var(--side) minmax(0, 1fr); }
   .artifact {
     position: fixed;
     inset-block: 0;
@@ -927,7 +975,20 @@ html[data-theme="light"] .err-note { color: #b42318; }
 @media (max-width: 820px) {
   :root { --side: 258px; }
 
+  /* The drawer parks itself off-canvas with translateX(±105%). Without clipping
+     that translated box extends the document's scroll width, which in RTL pushes
+     the entire app sideways. The shell never scrolls horizontally, so clip it. */
+  html, body { overflow-x: clip; }
+
   .app { grid-template-columns: minmax(0, 1fr); }
+
+  /* The 1080px rule above still reserves the sidebar track when an artifact is
+     open. Below 820px the sidebar is `position: fixed` and leaves the grid, so
+     that reserved track would hand the chat column only --side px. Collapse to a
+     single full-width track for every artifact/RTL variant. */
+  .app.has-artifact,
+  [dir="rtl"] .app,
+  [dir="rtl"] .app.has-artifact { grid-template-columns: minmax(0, 1fr); }
 
   .sidebar {
     position: fixed;
