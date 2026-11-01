@@ -1,0 +1,17 @@
+node_modules/
+.env
+.password
+
+# model weights (downloaded by scripts/download-model.sh)
+models/*.gguf
+models/parts/
+models/**
+
+# llama.cpp source + build (created by scripts/build-llama.sh)
+llama.cpp
+llama.cpp/
+
+# misc
+.build/
+*.log
+.DS_Store

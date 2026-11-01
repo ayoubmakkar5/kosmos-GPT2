@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Kosmos Code — مساعد البرمجة بالذكاء الاصطناعي</title>
+<meta name="description" content="Kosmos Code — AI coding assistant powered by a local Qwen3 model running on llama.cpp" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%A1%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+<!-- ================= LOGIN GATE ================= -->
+<div id="gate" class="gate">
+  <div class="gate-bg"></div>
+  <div class="gate-card">
+    <div class="logo">
+      <span class="logo-mark">⚡</span>
+      <div>
+        <h1>Kosmos <span>Code</span></h1>
+        <p class="tagline" data-i18n="tagline">مساعد البرمجة بالذكاء الاصطناعي · نموذج Qwen3 حقيقي يعمل محلياً</p>
+      </div>
+    </div>
+
+    <form id="login-form" autocomplete="off">
+      <label for="password" data-i18n="passwordLabel">كلمة السر</label>
+      <div class="pw-wrap">
+        <input id="password" name="password" type="password" placeholder="••••••••" required autofocus />
+        <button type="button" id="toggle-pw" class="ghost-icon" aria-label="show password">👁</button>
+      </div>
+      <button type="submit" class="primary" id="login-btn">
+        <span data-i18n="enter">دخول</span>
+      </button>
+      <p id="login-error" class="error" role="alert"></p>
+    </form>
+
+    <div class="gate-foot">
+      <span class="pill">🔒 <span data-i18n="protected">محمي بكلمة سر</span></span>
+      <span class="pill">🧠 <span id="gate-model">Qwen3-0.6B · Q4_K_M</span></span>
+      <span class="pill" id="gate-engine">⚙️ llama.cpp</span>
+    </div>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="app" class="app hidden">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="logo-mark small">⚡</span>
+      <div class="brand-text">
+        <strong>Kosmos <span>Code</span></strong>
+        <small data-i18n="brandSub">بيئة برمجة بالذكاء الاصطناعي</small>
+      </div>
+    </div>
+
+    <button id="new-chat" class="new-chat">
+      <span>＋</span> <span data-i18n="newChat">محادثة جديدة</span>
+    </button>
+
+    <div class="side-section">
+      <h3 data-i18n="history">المحادثات</h3>
+      <ul id="history-list" class="history"></ul>
+    </div>
+
+    <div class="side-section model-card">
+      <h3 data-i18n="modelTitle">النموذج</h3>
+      <div class="model-row"><span data-i18n="modelName">الاسم</span><b id="m-name">Qwen3-0.6B</b></div>
+      <div class="model-row"><span data-i18n="modelQuant">التكميم</span><b id="m-quant">Q4_K_M</b></div>
+      <div class="model-row"><span data-i18n="modelEngine">المشغّل</span><b>llama.cpp</b></div>
+      <div class="model-row"><span data-i18n="modelCtx">السياق</span><b id="m-ctx">4096</b></div>
+      <div class="model-status" id="model-status">
+        <span class="dot"></span><span id="model-status-text" data-i18n="loading">جارٍ تحميل النموذج…</span>
+      </div>
+    </div>
+
+    <div class="side-foot">
+      <button id="lang-toggle" class="ghost">🌐 <span id="lang-label">English</span></button>
+      <button id="logout" class="ghost">🚪 <span data-i18n="logout">خروج</span></button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <button id="menu-btn" class="ghost-icon only-mobile">☰</button>
+      <div class="topbar-title">
+        <h2 id="chat-title" data-i18n="welcomeTitle">مساحة العمل</h2>
+        <span class="sub" id="topbar-sub" data-i18n="welcomeSub">اكتب طلبك وسيولّد النموذج الكود</span>
+      </div>
+      <div class="topbar-actions">
+        <div class="seg" role="group">
+          <button data-mode="code" class="seg-btn active" data-i18n="modeCode">توليد كود</button>
+          <button data-mode="explain" class="seg-btn" data-i18n="modeExplain">شرح</button>
+          <button data-mode="debug" class="seg-btn" data-i18n="modeDebug">تصحيح</button>
+        </div>
+      </div>
+    </header>
+
+    <section id="messages" class="messages">
+      <div class="empty" id="empty-state">
+        <div class="empty-icon">⚡</div>
+        <h2 data-i18n="emptyTitle">ماذا نبرمج اليوم؟</h2>
+        <p data-i18n="emptyText">اطلب كوداً بلغتك المفضلة، أو الصق كوداً ليشرحه أو يصلح أخطاءه النموذج المحلي Qwen3.</p>
+        <div class="suggestions">
+          <button class="chip" data-prompt-key="s1">🐍 دالة بايثون لقراءة CSV وتحليل الأعمدة</button>
+          <button class="chip" data-prompt-key="s2">🌐 صفحة HTML/CSS لبطاقة تسجيل دخول عصرية</button>
+          <button class="chip" data-prompt-key="s3">⚛️ مكوّن React لعدّاد مع تخزين محلي</button>
+          <button class="chip" data-prompt-key="s4">🔎 اشرح لي هذا الكود وابحث عن الأخطاء</button>
+        </div>
+      </div>
+    </section>
+
+    <footer class="composer">
+      <div class="composer-box">
+        <textarea id="input" rows="1" data-i18n-ph="placeholder" placeholder="اكتب طلبك… مثال: اكتب دالة بايثون لحساب تسلسل فيبوناتشي مع اختبارات"></textarea>
+        <div class="composer-actions">
+          <label class="select-lang">
+            <select id="code-lang" title="language">
+              <option value="auto">🌐 Auto</option>
+              <option value="python">🐍 Python</option>
+              <option value="javascript">🟨 JavaScript</option>
+              <option value="typescript">🟦 TypeScript</option>
+              <option value="html">🌐 HTML/CSS</option>
+              <option value="react">⚛️ React</option>
+              <option value="sql">🗄️ SQL</option>
+              <option value="cpp">🔧 C++</option>
+              <option value="csharp">🎯 C#</option>
+              <option value="php">🐘 PHP</option>
+            </select>
+          </label>
+          <button id="send" class="send" disabled>
+            <span data-i18n="send">إرسال</span> <b>➤</b>
+          </button>
+        </div>
+      </div>
+      <div class="composer-foot">
+        <span id="engine-badge">🧠 <b id="engine-badge-model">Qwen3</b> · <span id="engine-badge-state" data-i18n="loadingShort">يحمّل…</span></span>
+        <span id="stats-badge" class="muted"></span>
+      </div>
+    </footer>
+  </main>
+
+  <div id="mobile-overlay" class="overlay hidden"></div>
+</div>
+
+<!-- ================= RUN PREVIEW MODAL ================= -->
+<div id="preview-modal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head">
+      <strong data-i18n="previewTitle">معاينة مباشرة</strong>
+      <button id="close-preview" class="ghost-icon">✕</button>
+    </div>
+    <iframe id="preview-frame" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
