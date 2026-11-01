@@ -1,0 +1,32 @@
+# Render blueprint — deploy Kosmos AI with a public https://<name>.onrender.com URL
+#
+#   1. Push this repo to GitHub.
+#   2. Render dashboard → New → Blueprint → pick the repo.
+#   3. Set APP_PASSWORD in the service's Environment tab (do not commit it).
+#
+# Pick a plan with at least 2 GB of RAM: the LFM3-1.7B weights are ~1.1 GB and
+# the KV cache adds a few hundred megabytes on top.
+
+services:
+  - type: web
+    name: kosmos-ai
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: APP_PASSWORD
+        sync: false          # prompted for, never stored in git
+      - key: CTX_SIZE
+        value: "8192"
+      - key: ENGINE_THREADS
+        value: "2"
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: "3000"
+      # TLS is terminated by Render, which forwards the original scheme in
+      # x-forwarded-proto. The app already reads that header to mark the session
+      # cookie Secure and to switch to SameSite=None when framed, so there is
+      # nothing extra to configure here.

@@ -18,6 +18,36 @@ hf download LiquidAI/LFM3-1.7B-GGUF LFM3-1.7B-Q4_K_M.gguf --local-dir models/
 scp models/LFM3-1.7B-Q4_K_M.gguf user@server:/app/models/
 ```
 
+## Get a public URL in one step
+
+`docker-compose.yml` and `render.yaml` in the repo root are ready to use.
+
+```bash
+cp .env.example .env      # then edit APP_PASSWORD
+docker compose up -d --build
+```
+
+That gives you `http://<host>:3000`. Put it behind any TLS proxy (Caddy is the
+shortest route) and you have a real `https://` address:
+
+```
+kosmos.example.com {
+    reverse_proxy 127.0.0.1:3000
+}
+```
+
+**Render / Railway / Fly** — all three run the Dockerfile directly:
+
+- Render: push to GitHub → New → Blueprint → pick this repo. `render.yaml`
+  already declares the health check, the plan and `APP_PASSWORD` (prompted, never
+  committed). Pick the **2 GB** plan; the weights are 1.1 GB before the KV cache.
+- Fly: `fly launch --no-deploy` then `fly secrets set APP_PASSWORD=...` and
+  `fly deploy`. Give the machine 2 GB: `fly scale memory 2048`.
+
+The app reads `x-forwarded-proto` to mark the session cookie `Secure` and
+switches to `SameSite=None` when it is framed, so login keeps working behind a
+TLS-terminating proxy and inside an embedded preview. No extra flags needed.
+
 ## Docker (recommended)
 
 ```bash
