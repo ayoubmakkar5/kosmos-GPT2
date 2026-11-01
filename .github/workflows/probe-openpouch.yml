@@ -1,6 +1,10 @@
 name: Probe openpouch capacity
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/probe-openpouch.yml'
   workflow_dispatch:
     inputs:
       app:
