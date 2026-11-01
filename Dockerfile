@@ -1,18 +1,26 @@
 # ---------------------------------------------------------------------------
 # Kosmos Code — Node.js + llama.cpp + the real Qwen3-0.6B GGUF weights
 #
-# Fully self-contained: llama.cpp source is vendored in ./engine and the model
-# is pulled from a public GitHub mirror with a SHA-256 check, so the build needs
-# no Hugging Face / GitHub-release egress beyond github.com.
+# Build order:
+#   1. engine-builder: fetch a pinned llama.cpp snapshot (npm) and compile
+#      llama-server for CPU — no GPU / network beyond npm+github needed
+#   2. runtime: Node 20 + llama-server + the real Qwen3-0.6B Q4_K_M weights,
+#      downloaded through a mirror with a SHA-256 verification
 # ---------------------------------------------------------------------------
 FROM debian:bookworm-slim AS engine-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      cmake build-essential ca-certificates ninja-build \
+      cmake build-essential ca-certificates ninja-build curl git nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
-COPY engine ./engine
+COPY scripts/fetch-engine.sh ./scripts/fetch-engine.sh
+# The llama.cpp source is fetched at build time (npm snapshot) so it does not
+# have to live in the repository; a vendored ./engine is still used if present.
+COPY engine* ./engine/
+RUN bash scripts/fetch-engine.sh \
+    && ls engine/tools/server/main.cpp >/dev/null
+
 RUN cmake -S engine -B engine/build -G Ninja \
       -DCMAKE_BUILD_TYPE=Release \
       -DLLAMA_CURL=OFF \

@@ -30,12 +30,33 @@ jobs:
         env:
           APP_PASSWORD: ${{ inputs.password || 'Kosmos@2026' }}
         run: |
+          set +e
           npx -y openpouch@latest deploy . \
             --json \
             --health-path /api/health \
-            --var APP_PASSWORD="$APP_PASSWORD" \
-            | tee /tmp/deploy.json
-          node -e "const r=require('/tmp/deploy.json');console.log('URL:',r.url||'(none)');console.log(r.summary||'')"
+            --var APP_PASSWORD="$APP_PASSWORD" > /tmp/deploy.json 2>/tmp/deploy.err
+          code=$?
+          echo "openpouch exit code: $code"
+          echo "--- stdout ---"; cat /tmp/deploy.json || true
+          echo "--- stderr ---"; tail -40 /tmp/deploy.err || true
+          node -e "
+            const fs=require('fs');
+            let r={};
+            try { r=JSON.parse(fs.readFileSync('/tmp/deploy.json','utf8')); } catch(e) { console.log('could not parse deploy output'); }
+            const url=r.url||r.previewUrl||'';
+            console.log('URL:', url||'(none)');
+            console.log(r.summary||'');
+            if (process.env.GITHUB_STEP_SUMMARY) {
+              const lines=['## openpouch deployment','',
+                '- status: **'+(r.ok?'ok':'failed')+'**',
+                '- url: '+(url||'_none_'),
+                '- health: '+(r.healthStatus||'unknown'),
+                r.claimUrl?'- claim: '+r.claimUrl:'',
+                '', r.summary?'> '+String(r.summary).replace(/\n/g,' '):''];
+              fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n')+'\n');
+            }
+          "
+          exit $code
 
       - name: Upload deployment evidence
         if: always()

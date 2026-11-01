@@ -2,7 +2,6 @@
 .github
 llama.cpp
 models
-engine
 node_modules
 tests
 *.log
