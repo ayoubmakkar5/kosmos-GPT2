@@ -15,6 +15,10 @@ on:
         required: false
         default: 'Kosmos@2026'
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -57,6 +61,25 @@ jobs:
             }
           "
           exit $code
+
+      - name: Report failure details as an issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo '```json'
+            tail -c 4000 /tmp/deploy.json 2>/dev/null || echo '(no stdout)'
+            echo '```'
+            echo
+            echo '### stderr'
+            echo '```'
+            tail -c 4000 /tmp/deploy.err 2>/dev/null || echo '(no stderr)'
+            echo '```'
+          } > /tmp/issue.md
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "openpouch deploy failed (run $GITHUB_RUN_ID)" \
+            --body-file /tmp/issue.md || true
 
       - name: Upload deployment evidence
         if: always()
