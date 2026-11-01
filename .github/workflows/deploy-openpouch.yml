@@ -8,6 +8,8 @@ on:
       - 'public/**'
       - 'Dockerfile'
       - '.github/workflows/deploy-openpouch.yml'
+  schedule:
+    - cron: '*/30 * * * *'   # retry automatically while openpouch is at capacity
   workflow_dispatch:
     inputs:
       password:
@@ -35,14 +37,30 @@ jobs:
           APP_PASSWORD: ${{ inputs.password || 'Kosmos@2026' }}
         run: |
           set +e
-          npx -y openpouch@latest deploy . \
-            --json \
-            --health-path /api/health \
-            --var APP_PASSWORD="$APP_PASSWORD" > /tmp/deploy.json 2>/tmp/deploy.err
-          code=$?
-          echo "openpouch exit code: $code"
-          echo "--- stdout ---"; cat /tmp/deploy.json || true
-          echo "--- stderr ---"; tail -40 /tmp/deploy.err || true
+          attempt=1
+          max=5
+          while [ $attempt -le $max ]; do
+            echo "::group::openpouch deploy attempt $attempt/$max"
+            npx -y openpouch@latest deploy . \
+              --json \
+              --health-path /api/health \
+              --var APP_PASSWORD="$APP_PASSWORD" > /tmp/deploy.json 2>/tmp/deploy.err
+            code=$?
+            cat /tmp/deploy.json || true
+            attempt=$((attempt+1))
+            echo "::endgroup::"
+            # success, or a real (non-capacity) failure -> stop retrying
+            if [ $code -eq 0 ] && grep -q '"ok": *true' /tmp/deploy.json 2>/dev/null; then break; fi
+            if ! grep -qiE 'at capacity|503|try again later' /tmp/deploy.json /tmp/deploy.err 2>/dev/null; then
+              echo "non-capacity failure, not retrying"
+              break
+            fi
+            if [ $attempt -le $max ]; then
+              echo "host at capacity — backing off ${attempt}0s"
+              sleep $((attempt*10))
+            fi
+          done
+          echo "openpouch final exit code: $code"
           node -e "
             const fs=require('fs');
             let r={};
@@ -63,7 +81,7 @@ jobs:
           exit $code
 
       - name: Report failure details as an issue
-        if: failure()
+        if: failure() && !contains(github.event_name, 'schedule')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
